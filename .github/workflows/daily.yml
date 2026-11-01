@@ -6,10 +6,10 @@ on:
   workflow_dispatch:       # кнопка «Run workflow»
     inputs:
       mode:
-        description: 'scrape — обычный сбор, recon — разведка сайта, demo — тестовые данные'
+        description: 'scrape — обычный сбор, recon — разведка сайта, recon-detail — разведка деталей тура (2–3 мин), demo — тестовые данные'
         type: choice
         default: scrape
-        options: [scrape, recon, demo]
+        options: [scrape, recon, recon-detail, demo]
 
 permissions:
   contents: write
@@ -65,6 +65,10 @@ jobs:
             git rm -r -q --cached debug/recon 2>/dev/null || true   # старые файлы разведки заменяем новыми
             # небольшие файлы разведки кладём в репозиторий, чтобы их можно было прочитать без скачивания артефакта
             find debug/recon -type f \( -name 'key_*' -o -name 'recon.json' -o -name '*.png' \) -size -500k 2>/dev/null | head -80 | xargs -r git add -f
+          fi
+          if [ "$MODE" = "recon-detail" ]; then
+            git rm -r -q --cached --ignore-unmatch debug/recon/key_detail_* debug/recon/js_* 2>/dev/null || true
+            find debug/recon -type f \( -name 'key_detail_*' -o -name 'js_*' \) -size -600k 2>/dev/null | head -60 | xargs -r git add -f
           fi
           git add -f debug/last.png 2>/dev/null || true
           if git diff --cached --quiet; then

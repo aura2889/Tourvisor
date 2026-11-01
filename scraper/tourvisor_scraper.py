@@ -455,6 +455,8 @@ def offers_from_modresult(datas, ctx):
         meal = ((dec.get("meal") or {}).get(str(t.get("ml"))) or {}).get("name") or ""
         note = ((dec.get("tourname") or {}).get(str(t.get("nm"))) or {}).get("name")
         reg = t.get("reg")
+        room = ((dec.get("rooms") or {}).get(str(t.get("rm"))) or {}).get("name")
+        rphoto = (((h.get("roomdesc") or {}).get(str(t.get("rmd"))) or {}).get("photo"))
         out.append({
             "dest": ctx["dest"], "kind": "tour", "dep": ctx["dep"],
             "hotel": _hotel_name(h.get("name")), "stars": stars,
@@ -464,8 +466,25 @@ def offers_from_modresult(datas, ctx):
             "operator": (ops.get(t.get("op")) or {}).get("name"),
             "flight": "regular" if reg == 1 else "charter" if reg == 2 else None,
             "note": note,
+            "hid": hid, "room": room, "rphoto": rphoto,
             "url": hotel_link(ctx, hid, t.get("dt"), t.get("nt")),
         })
+    return out
+
+
+def hotels_from_modresult(datas):
+    """Карточки отелей: координаты, главное фото, несколько фото, страница на Турвизоре."""
+    dec, _, _ = merge_modresult(datas)
+    out = {}
+    for hid, h in (dec.get("hotels") or {}).items():
+        photos = [u for u in (h.get("photo") or []) if isinstance(u, str)][:10]
+        item = {"lat": h.get("lat"), "lng": h.get("lng"), "pic": h.get("pic"), "photos": photos,
+                "page": "https://tourvisor.ru/countries#!/hotel=%s" % hid}
+        if h.get("seadistance") is not None:
+            item["sea"] = h.get("seadistance")
+        if h.get("rating"):
+            item["rating"] = h.get("rating")
+        out[str(hid)] = item
     return out
 
 
@@ -581,7 +600,7 @@ def run_scrape(cfg):
     today = date.today()
     status = {"ok": False, "time": datetime.now(TZ).strftime("%Y-%m-%dT%H:%M:%S%z"), "mode": "scrape",
               "pairs": {}, "errors": []}
-    raw, failed = [], []
+    raw, failed, hotels_all = [], [], {}
     DEBUG.mkdir(exist_ok=True)
     with sync_playwright() as p:
         browser, bctx = new_browser(p)
@@ -609,6 +628,7 @@ def run_scrape(cfg):
                                     datas, done = run_search(bctx.request, cfg, session, ctx["country_id"], ctx["dep_id"],
                                                              d_from, d_to, regular)
                                     got += offers_from_modresult(datas, ctx)
+                                    hotels_all.update(hotels_from_modresult(datas))
                                     unfinished += 0 if done else 1
                                     break
                                 except Exception as e:  # noqa: BLE001
@@ -661,7 +681,7 @@ def run_scrape(cfg):
     rate = fetch_rub_kzt() if cfg.get("rub_to_kzt") == "auto" else cfg.get("rub_to_kzt")
     if isinstance(rate, (int, float)) and rate > 0:
         meta["rub_kzt"] = rate
-    data = agg.build_data(raw, cfg, prev=prev, failed_pairs=failed, today=today, meta=meta)
+    data = agg.build_data(raw, cfg, prev=prev, failed_pairs=failed, today=today, meta=meta, hotels=hotels_all)
     status["ok"] = not any(v.get("errors") for v in status["pairs"].values()) and not status["errors"]
     status["stats"] = data["stats"]
     write_json(ROOT / "data.json", data)
@@ -730,6 +750,85 @@ def run_recon(cfg):
     return 0
 
 
+def run_recon_detail(cfg):
+    """Короткая разведка (2–3 мин): как сайт отдаёт детали тура (рейс, время вылета) и полные фото отеля."""
+    from playwright.sync_api import sync_playwright
+    out = DEBUG / "recon"
+    out.mkdir(parents=True, exist_ok=True)
+    for f in list(out.glob("key_detail_*")) + list(out.glob("js_*")):
+        f.unlink()
+    site = cfg["site"].rstrip("/")
+    ref = site + "/search.php"
+    report = {"time": datetime.now(TZ).isoformat(), "calls": []}
+    with sync_playwright() as p:
+        browser, bctx = new_browser(p)
+        page = bctx.new_page()
+        cap = Capture(page)
+        try:
+            page.goto(ref, wait_until="domcontentloaded", timeout=60_000)
+            page.wait_for_timeout(8000)
+            session = find_session(cap)
+            req = bctx.request
+
+            # 1) что умеют скрипты сайта: адреса *.php и места, где упоминаются рейсы/детали/фото
+            js_urls = sorted({u for _, u, *_ in cap.log if "/module/" in u and u.split("?")[0].endswith(".js")})
+            found = {}
+            for u in js_urls:
+                try:
+                    text = req.get(u, timeout=60_000).text()
+                except Exception:  # noqa: BLE001
+                    continue
+                php = sorted(set(re.findall(r"[\w/\-.]*\w+\.php", text)))
+                ctxs = []
+                for m in re.finditer(r".{0,160}(actdetail|actualiz|flightdetail|flightinfo|hotelinfo|hotel\.php|imgbig|getflights|searchflights).{0,200}", text):
+                    ctxs.append(m.group(0))
+                    if len(ctxs) >= 14:
+                        break
+                found[u.split("/")[-1].split("?")[0]] = {"php": php[:60], "ctx": ctxs}
+            write_json(out / "js_endpoints.json", found, indent=1)
+
+            # 2) реальный поиск и пробные запросы деталей по самым дешёвым турам
+            today = date.today()
+            datas, done = run_search(req, cfg, session, 9, 59, today + timedelta(days=30), today + timedelta(days=34), 1)
+            dec, ops, tours = merge_modresult(datas)
+            tours.sort(key=lambda x: x[1].get("pr") or 10**9)
+            report["tours_found"] = len(tours)
+            q = {"referrer": ref}
+            if session:
+                q["session"] = session
+            tail = "&" + urlencode(q)
+            n = 0
+            for hid, t in tours[:2]:
+                tid = t["id"]
+                cands = [
+                    "/xml/actdetail.php?tourid=%s&flights=1&request=1&format=json" % tid,
+                    "/xml/actdetail.php?tourid=%s&flights=1&format=json" % tid,
+                    "/xml/actualize.php?tourid=%s&request=2&format=json" % tid,
+                    "/xml/hotel.php?hotelcode=%s&imgbig=1&format=json" % hid,
+                    "/api/v1.2/hotels/%s" % hid,
+                    "/api/v1.2/tours/%s" % tid,
+                    "/api/v1.2/tours/%s/flights" % tid,
+                ]
+                for c in cands:
+                    n += 1
+                    try:
+                        r = req.get(site + c + tail, headers={"Referer": ref}, timeout=60_000)
+                        body, status = r.text(), r.status
+                    except Exception as e:  # noqa: BLE001
+                        body, status = "ERROR %s" % e, 0
+                    name = re.sub(r"[^\w.=-]+", "_", c.split("?")[0])[:70]
+                    write_json(out / ("key_detail_%02d_%s.json" % (n, name)),
+                               {"url": c, "tour": t, "status": status, "body": body[:300_000]}, indent=1)
+                    report["calls"].append({"url": c, "status": status, "size": len(body)})
+        except Exception as e:  # noqa: BLE001
+            report["error"] = str(e)[:400]
+        finally:
+            browser.close()
+    write_json(out / "js_report.json", report, indent=1)
+    print("recon-detail:", json.dumps(report, ensure_ascii=False)[:600])
+    return 0
+
+
 def run_demo(cfg):
     import demo_data
     raw = demo_data.make_offers(cfg, date.today())
@@ -743,10 +842,10 @@ def run_demo(cfg):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["scrape", "recon", "demo"], default="scrape")
+    ap.add_argument("--mode", choices=["scrape", "recon", "recon-detail", "demo"], default="scrape")
     args = ap.parse_args()
     cfg = load_cfg()
-    return {"scrape": run_scrape, "recon": run_recon, "demo": run_demo}[args.mode](cfg)
+    return {"scrape": run_scrape, "recon": run_recon, "recon-detail": run_recon_detail, "demo": run_demo}[args.mode](cfg)
 
 
 if __name__ == "__main__":

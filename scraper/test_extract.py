@@ -113,6 +113,22 @@ def test_real_modresult_china_and_blocks_merge():
     assert data["mins"]["china|Алматы|tour"]["min"] == 139724
 
 
+def test_hotel_cards_room_photo_and_map():
+    import aggregate as agg
+    cfg, fx, today = _real()
+    ctx = {"dest": "dubai", "dep": "Актау", "dep_id": 74, "country_id": 9, "country": "ОАЭ", "cur": "RUB"}
+    raw = ts.offers_from_modresult(fx["aktau_uae"], ctx)
+    hotels = ts.hotels_from_modresult(fx["aktau_uae"])
+    data = agg.build_data(raw, cfg, today=today, hotels=hotels)
+    best = data["offers"][0]
+    h = data["hotels"][str(best["hid"])]
+    assert 24 < h["lat"] < 26 and 54 < h["lng"] < 56            # Дубай
+    assert h["page"].endswith("#!/hotel=%s" % best["hid"])
+    assert h["pic"].startswith("https://static.tourvisor.ru/") and h["photos"][0].endswith(".jpg")
+    assert best["room"] and best["rphoto"].startswith("https://static.tourvisor.ru/hotel_pics/rooms/")
+    assert len(data["hotels"]) <= len({o["hid"] for o in data["offers"]})   # лишние отели (Шарджа и др.) не тянем
+
+
 def test_windows_cover_period():
     from datetime import date
     ws = list(ts.windows({"days_ahead": 60, "window_days": 20}, date(2026, 11, 1)))

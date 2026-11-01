@@ -50,6 +50,12 @@ main{padding:10px 12px 40px;max-width:820px;margin:0 auto}
 .t2{color:var(--mut);font-size:13px;margin-top:2px}
 .dates{font-size:13.5px;margin-top:6px}
 .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.links{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:8px;font-size:13px}
+.links a{color:var(--acc);text-decoration:none;font-weight:600;white-space:nowrap}
+.links .ph{font-weight:500;color:var(--mut)}
+.dt{display:inline-flex;align-items:center;gap:4px;padding:3px 10px}
+.dt input{border:0;background:transparent;color:inherit;font:inherit;font-size:13.5px;padding:4px 0;min-width:120px}
+.dsel{color:var(--acc);font-weight:700}
 .tag{font-size:11.5px;padding:2px 7px;border-radius:6px;background:var(--chip);font-weight:600;white-space:nowrap}
 .tag.dep{background:var(--acc);color:var(--acc-ink)}
 .tag.hot{background:#e8590c22;color:var(--hot)}
@@ -141,7 +147,7 @@ function fmtTime(iso){
 /* ---------- выборка ---------- */
 function base(){ // всё, кроме выбора города вылета
   return DATA.offers.filter(function(o){
-    return o.dest===S.dest&&o.kind===S.kind&&S.stars.indexOf(o.stars)>=0&&(!S.resort||o.resort===S.resort);
+    return o.dest===S.dest&&o.kind===S.kind&&S.stars.indexOf(o.stars)>=0&&(!S.resort||o.resort===S.resort)&&(!S.date||o.dates.indexOf(S.date)>=0);
   });
 }
 function histDelta(dest,dep,kind){
@@ -182,9 +188,34 @@ function renderNav(){
     '<button class="chip'+(S.kind==='hot'?' on':'')+'" data-kind="hot">🔥 Горящие</button>'+
     '<span class="lbl">&nbsp;Звёзды</span>'+[3,4,5].map(function(s){
       return '<button class="chip'+(S.stars.indexOf(s)>=0?' on':'')+'" data-star="'+s+'">'+s+'★</button>'}).join('')+
+    '<label class="chip dt'+(S.date?' on':'')+'">📅 <input type="date" id="dt" value="'+(S.date||'')+'" min="'+dateRange().min+'" max="'+dateRange().max+'"></label>'+
+    (S.date?'<button class="chip" data-nodate="1">Все даты</button>':'')+
     '<select id="sort"><option value="price"'+(S.sort==='price'?' selected':'')+'>Сначала дешёвые</option>'+
     '<option value="date"'+(S.sort==='date'?' selected':'')+'>Сначала ближайшие</option></select>';
   $('sort').onchange=function(){S.sort=this.value;S.shown=60;save();renderList()};
+  $('dt').onchange=function(){S.date=this.value||null;S.shown=60;save();renderAll()};
+}
+var DR=null;
+function dateRange(){ /* самая ранняя и самая поздняя даты вылета в данных — границы календаря */
+  if(DR)return DR;
+  var mn='9999',mx='0000';
+  DATA.offers.forEach(function(o){o.dates.forEach(function(d){if(d<mn)mn=d;if(d>mx)mx=d})});
+  return DR={min:mn,max:mx};
+}
+function mapUrl(h){return 'https://www.google.com/maps/search/?api=1&query='+h.lat+','+h.lng}
+function linksFor(o){
+  var h=(DATA.hotels||{})[o.hid]||null,out=[];
+  if(h){
+    var ph=(h.photos&&h.photos.length)?h.photos:(h.pic?[h.pic]:[]);
+    if(ph.length){
+      out.push('<span>📷 <a target="_blank" rel="noopener" href="'+esc(ph[0])+'">Фото отеля</a>'+
+        ph.slice(1,6).map(function(u,i){return ' <a class="ph" target="_blank" rel="noopener" href="'+esc(u)+'">'+(i+2)+'</a>'}).join('')+'</span>');
+    }
+  }
+  if(o.rphoto)out.push('<a target="_blank" rel="noopener" href="'+esc(o.rphoto)+'">🛏 Номер'+(o.room?' ('+esc(o.room)+')':'')+'</a>');
+  if(h&&h.lat&&h.lng)out.push('<a target="_blank" rel="noopener" href="'+esc(mapUrl(h))+'">📍 Карта</a>');
+  if(h&&h.page)out.push('<a target="_blank" rel="noopener" href="'+esc(h.page)+'">Все фото и отзывы ↗</a>');
+  return out.join('');
 }
 
 function groupHotels(rows){
@@ -222,7 +253,7 @@ function renderList(){
   var gs=groupHotels(rows),n=Math.min(S.shown||60,gs.length),h='';
   if(!gs.length){
     $('list').innerHTML='<div class="empty">'+(S.kind==='hot'?'Горящих туров по этим фильтрам сейчас нет.':'Туров по этим фильтрам нет.')+
-      '<br>Попробуйте другой город вылета или добавьте звёзды.</div>';
+      '<br>Попробуйте другой город вылета, другую дату или добавьте звёзды.</div>';
     return;
   }
   for(var i=0;i<n;i++){
@@ -230,13 +261,14 @@ function renderList(){
     h+='<div class="card'+(i===0?' best':'')+'" data-i="'+i+'"><div class="head"><div class="l">'+
       '<div class="t1">'+esc(o.hotel)+'<span class="st">'+new Array(o.stars+1).join('★')+'</span></div>'+
       '<div class="t2">'+line2(o)+'</div>'+
-      '<div class="dates">'+esc(fmtDates(o.dates))+'</div>'+
-      '<div class="tags">'+tagsFor(o)+'</div></div>'+
+      '<div class="dates'+(S.date?' dsel':'')+'">'+(S.date?'📅 ':'')+esc(S.date?fmtDates([S.date]):fmtDates(o.dates))+'</div>'+
+      '<div class="tags">'+tagsFor(o)+'</div>'+
+      '<div class="links">'+linksFor(o)+'</div></div>'+
       '<div class="r"><div class="pr">'+P(o.price,o.cur)+(rub(o.price,o.cur)?'<small>'+rub(o.price,o.cur)+'</small>':'')+'<small>за '+(DATA.adults||2)+' взр.'+(g.all.length>1?' · ещё '+(g.all.length-1)+' вар.':'')+'</small></div></div></div>'+
       '<div class="det">';
     g.all.forEach(function(v){
-      h+='<div class="var"><span>'+esc(fmtDates(v.dates))+(v.nights?' · '+v.nights+' ноч.':'')+(v.meal?' · '+esc(MEAL[v.meal]||v.meal):'')+
-        (v.operator?' · '+esc(v.operator):'')+(v.note?'<br><span style="color:var(--mut);font-size:12px">'+esc(v.note)+'</span>':'')+'</span><b>'+P(v.price,v.cur)+(rub(v.price,v.cur)?'<br><span style="font-weight:500;color:var(--mut);font-size:12px">'+rub(v.price,v.cur)+'</span>':'')+'</b></div>';
+      h+='<div class="var"><span>'+(S.date?'📅 ':'')+esc(S.date?fmtDates([S.date]):fmtDates(v.dates))+(v.nights?' · '+v.nights+' ноч.':'')+(v.meal?' · '+esc(MEAL[v.meal]||v.meal):'')+
+        (v.operator?' · '+esc(v.operator):'')+(v.room?' · '+(v.rphoto?'<a target="_blank" rel="noopener" href="'+esc(v.rphoto)+'" style="color:var(--acc)">🛏 '+esc(v.room)+'</a>':esc(v.room)):'')+(v.note?'<br><span style="color:var(--mut);font-size:12px">'+esc(v.note)+'</span>':'')+'</span><b>'+P(v.price,v.cur)+(rub(v.price,v.cur)?'<br><span style="font-weight:500;color:var(--mut);font-size:12px">'+rub(v.price,v.cur)+'</span>':'')+'</b></div>';
     });
     if(o.url)h+='<a class="lnk" target="_blank" rel="noopener" href="'+esc(o.url)+'">Открыть на Турвизоре →</a>';
     h+='</div></div>';
@@ -263,12 +295,13 @@ function renderBanners(){
 function renderAll(){renderNav();renderList()}
 
 document.addEventListener('click',function(e){
-  var b=e.target.closest('[data-dest],[data-resort],[data-dep],[data-kind],[data-star]');
+  var b=e.target.closest('[data-dest],[data-resort],[data-dep],[data-kind],[data-star],[data-nodate]');
   if(b){
     if(b.hasAttribute('data-dest')){S.dest=b.getAttribute('data-dest');S.resort=focusOf(S.dest);S.dep='*'}
     else if(b.hasAttribute('data-resort')){S.resort=b.getAttribute('data-resort')||null}
     else if(b.hasAttribute('data-dep')){S.dep=b.getAttribute('data-dep')}
     else if(b.hasAttribute('data-kind')){S.kind=b.getAttribute('data-kind')}
+    else if(b.hasAttribute('data-nodate')){S.date=null}
     else if(b.hasAttribute('data-star')){
       var s=+b.getAttribute('data-star'),i=S.stars.indexOf(s);
       if(i>=0){if(S.stars.length>1)S.stars.splice(i,1)}else S.stars.push(s);
@@ -288,7 +321,7 @@ function load(){
     fetch('data.json'+t).then(function(r){return r.json()}),
     fetch('status.json'+t).then(function(r){return r.json()}).catch(function(){return null})
   ]).then(function(res){
-    DATA=res[0];STATUS=res[1];
+    DATA=res[0];STATUS=res[1];S.date=null;
     if(!DATA.destinations[S.dest])S.dest=Object.keys(DATA.destinations)[0];
     if(S.resort===null&&S.dest&&!LS.get('tv-state',null))S.resort=focusOf(S.dest);
     renderBanners();renderAll();

@@ -145,6 +145,9 @@ def norm_offer(raw, cfg, today=None):
         "url": raw.get("url"),
         "sub": raw.get("sub") or None,
         "note": raw.get("note") or None,
+        "hid": raw.get("hid"),
+        "room": raw.get("room") or None,
+        "rphoto": raw.get("rphoto") or None,
     }
 
 
@@ -195,7 +198,7 @@ def update_history(prev_history, mins, today_iso, keep_days=90):
     return hist
 
 
-def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=None, max_per_pair=400):
+def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=None, max_per_pair=400, hotels=None):
     """Главная функция: сырые предложения -> содержимое data.json."""
     today = today or date.today()
     prev = prev or {}
@@ -224,6 +227,12 @@ def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=Non
                 carried += 1
         kept.sort(key=lambda g: (g["price"], g["hotel"], g["dep"]))
 
+    # карточки отелей (координаты, фото) — только для тех, что остались в списке
+    pool = dict((prev.get("hotels") or {}) if not prev.get("demo") else {})
+    pool.update(hotels or {})
+    used = {str(g["hid"]) for g in kept if g.get("hid")}
+    hotels_out = {h: v for h, v in pool.items() if h in used}
+
     mins = minimums([g for g in kept if not g.get("stale")])
     now = datetime.now().astimezone().isoformat(timespec="seconds")
     data = {
@@ -235,6 +244,7 @@ def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=Non
                          for k, d in cfg["destinations"].items()},
         "departures": cfg.get("departures", []),
         "offers": kept,
+        "hotels": hotels_out,
         "mins": mins,
         "history": update_history(prev.get("history"), mins, today.isoformat(), cfg.get("history_days", 90)),
     }
