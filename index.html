@@ -98,6 +98,11 @@ function $(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function save(){S.shown=S.shown||60;LS.set('tv-state',S)}
 function money(n,cur){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+'\u00a0'+(CUR[cur]||cur||'')}
+function P(n,cur){ /* основная цена: в тенге по курсу Нацбанка (если курс известен), иначе как есть */
+  if(cur==='RUB'&&DATA&&DATA.rub_kzt)return '\u2248\u00a0'+money(Math.round(n*DATA.rub_kzt/100)*100,'KZT');
+  return money(n,cur);
+}
+function rub(n,cur){return cur==='RUB'&&DATA&&DATA.rub_kzt?money(n,'RUB')+' на Турвизоре':''}
 function kzt(n,cur){ /* примерная цена в тенге по курсу Нацбанка; у туроператора может отличаться */
   if(cur!=='RUB'||!DATA||!DATA.rub_kzt)return '';
   return '\u2248\u00a0'+money(Math.round(n*DATA.rub_kzt/1000)*1000,'KZT');
@@ -164,12 +169,12 @@ function renderNav(){
     var ma=mins[a],mb=mins[b];if(ma&&mb)return ma.price-mb.price;return ma?-1:mb?1:0;});
   var all=rows.length?Math.min.apply(null,rows.map(function(o){return o.price})):null;
   var h='<span class="lbl">Вылет</span><button class="chip dep'+(S.dep==='*'?' on':'')+'" data-dep="*"><b>Все города</b><small>'+
-    (all!=null?'от '+money(all,rows[0].cur):'нет туров')+'</small></button>';
+    (all!=null?'от '+P(all,rows[0].cur):'нет туров')+'</small></button>';
   deps.forEach(function(d){
     var m=mins[d],dl=histDelta(S.dest,d,S.kind);
     var arrow=dl<0?' <span class="dn">▼</span>':dl>0?' <span class="up">▲</span>':'';
     h+='<button class="chip dep'+(S.dep===d?' on':'')+(m?'':' dis')+'" data-dep="'+esc(d)+'"><b>'+esc(d)+'</b><small>'+
-      (m?'от '+money(m.price,m.cur)+arrow:'нет туров')+'</small></button>';
+      (m?'от '+P(m.price,m.cur)+arrow:'нет туров')+'</small></button>';
   });
   $('deps').innerHTML=h;
 
@@ -227,11 +232,11 @@ function renderList(){
       '<div class="t2">'+line2(o)+'</div>'+
       '<div class="dates">'+esc(fmtDates(o.dates))+'</div>'+
       '<div class="tags">'+tagsFor(o)+'</div></div>'+
-      '<div class="r"><div class="pr">'+money(o.price,o.cur)+(kzt(o.price,o.cur)?'<small>'+kzt(o.price,o.cur)+'</small>':'')+'<small>за '+(DATA.adults||2)+' взр.'+(g.all.length>1?' · ещё '+(g.all.length-1)+' вар.':'')+'</small></div></div></div>'+
+      '<div class="r"><div class="pr">'+P(o.price,o.cur)+(rub(o.price,o.cur)?'<small>'+rub(o.price,o.cur)+'</small>':'')+'<small>за '+(DATA.adults||2)+' взр.'+(g.all.length>1?' · ещё '+(g.all.length-1)+' вар.':'')+'</small></div></div></div>'+
       '<div class="det">';
     g.all.forEach(function(v){
       h+='<div class="var"><span>'+esc(fmtDates(v.dates))+(v.nights?' · '+v.nights+' ноч.':'')+(v.meal?' · '+esc(MEAL[v.meal]||v.meal):'')+
-        (v.operator?' · '+esc(v.operator):'')+(v.note?'<br><span style="color:var(--mut);font-size:12px">'+esc(v.note)+'</span>':'')+'</span><b>'+money(v.price,v.cur)+(kzt(v.price,v.cur)?'<br><span style="font-weight:500;color:var(--mut);font-size:12px">'+kzt(v.price,v.cur)+'</span>':'')+'</b></div>';
+        (v.operator?' · '+esc(v.operator):'')+(v.note?'<br><span style="color:var(--mut);font-size:12px">'+esc(v.note)+'</span>':'')+'</span><b>'+P(v.price,v.cur)+(rub(v.price,v.cur)?'<br><span style="font-weight:500;color:var(--mut);font-size:12px">'+rub(v.price,v.cur)+'</span>':'')+'</b></div>';
     });
     if(o.url)h+='<a class="lnk" target="_blank" rel="noopener" href="'+esc(o.url)+'">Открыть на Турвизоре →</a>';
     h+='</div></div>';
@@ -252,7 +257,7 @@ function renderBanners(){
   }
   $('banners').innerHTML=h;
   $('sub').textContent='обновлено '+fmtTime(DATA.generated)+' · '+(DATA.adults||2)+' взрослых · отели '+DATA.min_stars+'–5★'+
-    (DATA.rub_kzt?' · цены Турвизора в ₽, 1 ₽ ≈ '+String(DATA.rub_kzt).replace('.',',')+' ₸':' · цены в ₽');
+    (DATA.rub_kzt?' · в тенге по курсу Нацбанка (1 ₽ ≈ '+String(DATA.rub_kzt).replace('.',',')+' ₸), Турвизор считает в ₽':' · цены в ₽');
 }
 
 function renderAll(){renderNav();renderList()}
