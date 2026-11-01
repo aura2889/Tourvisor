@@ -1,1 +1,0 @@
-{"status":{"cartid":0,"limit":60,"lmenabled":1,"track":0,"checklead":0,"cartposition":"2","adaptive":0,"updatingcount":0},"info":{"permissions":{"allowrange":true,"subscribe":1}}}
