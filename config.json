@@ -1,0 +1,33 @@
+{
+  "site": "https://tourvisor.ru",
+  "adults": 2,
+  "min_stars": 3,
+  "nights_from": 6,
+  "nights_to": 14,
+  "days_ahead": 120,
+  "currency_param": 0,
+  "delay_min": 3.0,
+  "delay_max": 7.0,
+  "search_timeout_s": 120,
+  "departures": ["Актау", "Астана", "Алматы"],
+  "departure_ids": {},
+  "country_ids": {"ОАЭ": 9, "Китай": 13},
+  "destinations": {
+    "dubai": {
+      "title": "Дубай",
+      "country": "ОАЭ",
+      "resort_include": "дубай|dubai",
+      "resort_exclude": "абу|аджман|шардж|фуджей|рас-эль|рас эль|умм"
+    },
+    "china": {
+      "title": "Китай",
+      "country": "Китай"
+    },
+    "georgia": {
+      "title": "Грузия",
+      "country": "Грузия",
+      "focus_resort": "Кудаури"
+    }
+  },
+  "history_days": 90
+}

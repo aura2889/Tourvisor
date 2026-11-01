@@ -1,0 +1,75 @@
+name: Ежедневный сбор Турвизора
+
+on:
+  schedule:
+    - cron: '3 22 * * *'   # 03:03 по Актау (UTC+5). GitHub часто опаздывает на 1–3 часа, но в окно до утра укладывается
+  workflow_dispatch:       # кнопка «Run workflow»
+    inputs:
+      mode:
+        description: 'scrape — обычный сбор, recon — разведка сайта, demo — тестовые данные'
+        type: choice
+        default: scrape
+        options: [scrape, recon, demo]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tourvisor-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MODE: ${{ inputs.mode || 'scrape' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: Зависимости и браузер
+        run: |
+          pip install -r scraper/requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Проверка логики (тесты)
+        run: |
+          python scraper/test_aggregate.py
+          python scraper/test_extract.py
+
+      - name: Сбор
+        run: python scraper/tourvisor_scraper.py --mode "$MODE"
+
+      - name: Отладочные файлы
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug
+          path: debug/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Сохранить результат
+        if: always()
+        run: |
+          git config user.name "tourvisor-bot"
+          git config user.email "tourvisor-bot@users.noreply.github.com"
+          git add data.json status.json
+          if [ "$MODE" = "recon" ]; then
+            # небольшие файлы разведки кладём в репозиторий, чтобы их можно было прочитать без скачивания артефакта
+            find debug/recon -type f -size -300k \( -name '*.json' -o -name '*.txt' -o -name '*.png' \) 2>/dev/null | head -60 | xargs -r git add -f
+          fi
+          git add -f debug/last.png 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "изменений нет"
+          else
+            git commit -m "data: $(date -u +%F) ($MODE)"
+            git pull --rebase
+            git push
+          fi
