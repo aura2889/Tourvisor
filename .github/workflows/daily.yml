@@ -62,6 +62,7 @@ jobs:
           git config user.email "tourvisor-bot@users.noreply.github.com"
           git add data.json status.json
           if [ "$MODE" = "recon" ]; then
+            git rm -r -q --cached debug/recon 2>/dev/null || true   # старые файлы разведки заменяем новыми
             # небольшие файлы разведки кладём в репозиторий, чтобы их можно было прочитать без скачивания артефакта
             find debug/recon -type f \( -name 'key_*' -o -name 'recon.json' -o -name '*.png' \) -size -500k 2>/dev/null | head -80 | xargs -r git add -f
           fi
@@ -70,6 +71,6 @@ jobs:
             echo "изменений нет"
           else
             git commit -m "data: $(date -u +%F) ($MODE)"
-            git pull --rebase
+            git pull --rebase --autostash
             git push
           fi
