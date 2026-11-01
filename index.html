@@ -97,7 +97,17 @@ var DEPFROM={'Астана':'Астаны','Алматы':'Алматы','Акт
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function save(){S.shown=S.shown||60;LS.set('tv-state',S)}
-function money(n,cur){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' '+(CUR[cur]||cur||'')}
+function money(n,cur){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+'\u00a0'+(CUR[cur]||cur||'')}
+function kzt(n,cur){ /* примерная цена в тенге по курсу Нацбанка; у туроператора может отличаться */
+  if(cur!=='RUB'||!DATA||!DATA.rub_kzt)return '';
+  return '\u2248\u00a0'+money(Math.round(n*DATA.rub_kzt/1000)*1000,'KZT');
+}
+function focusOf(dest){ /* курорт с акцентом (Грузия: Гудаури/Кудаури) */
+  var rx=DATA.destinations[dest].focus_regex;if(!rx)return null;
+  var re=new RegExp(rx,'i'),f=null;
+  DATA.offers.forEach(function(o){if(!f&&o.dest===dest&&o.resort&&re.test(o.resort))f=o.resort});
+  return f;
+}
 function dmy(iso){var p=iso.split('-');return {d:+p[2],m:+p[1]-1,y:+p[0]}}
 function ranges(dates){
   var out=[],cur=null;
@@ -143,7 +153,7 @@ function renderNav(){
   }).join('');
 
   var rs={};DATA.offers.forEach(function(o){if(o.dest===S.dest&&o.kind===S.kind&&o.resort)rs[o.resort]=(rs[o.resort]||0)+1});
-  var focus=dests[S.dest].focus_resort;
+  var focus=focusOf(S.dest);
   var names=Object.keys(rs).sort(function(a,b){return (b===focus)-(a===focus)||rs[b]-rs[a]});
   $('resort').innerHTML=names.length>1?('<span class="lbl">Курорт</span><button class="chip'+(!S.resort?' on':'')+'" data-resort="">Все</button>'+
     names.map(function(n){return '<button class="chip'+(S.resort===n?' on':'')+'" data-resort="'+esc(n)+'">'+esc(n)+'</button>'}).join('')):'';
@@ -195,7 +205,7 @@ function tagsFor(o){
   return t.join('');
 }
 function line2(o){
-  var p=[];if(o.resort)p.push(esc(o.resort));
+  var p=[];if(o.resort)p.push(esc(o.resort+(o.sub?', '+o.sub:'')));
   if(o.nights)p.push(o.nights+' ноч.');
   if(o.meal)p.push(esc(MEAL[o.meal]||o.meal));
   return p.join(' · ');
@@ -217,11 +227,11 @@ function renderList(){
       '<div class="t2">'+line2(o)+'</div>'+
       '<div class="dates">'+esc(fmtDates(o.dates))+'</div>'+
       '<div class="tags">'+tagsFor(o)+'</div></div>'+
-      '<div class="r"><div class="pr">'+money(o.price,o.cur)+'<small>за '+(DATA.adults||2)+' взр.'+(g.all.length>1?' · ещё '+(g.all.length-1)+' вар.':'')+'</small></div></div></div>'+
+      '<div class="r"><div class="pr">'+money(o.price,o.cur)+(kzt(o.price,o.cur)?'<small>'+kzt(o.price,o.cur)+'</small>':'')+'<small>за '+(DATA.adults||2)+' взр.'+(g.all.length>1?' · ещё '+(g.all.length-1)+' вар.':'')+'</small></div></div></div>'+
       '<div class="det">';
     g.all.forEach(function(v){
       h+='<div class="var"><span>'+esc(fmtDates(v.dates))+(v.nights?' · '+v.nights+' ноч.':'')+(v.meal?' · '+esc(MEAL[v.meal]||v.meal):'')+
-        (v.operator?' · '+esc(v.operator):'')+'</span><b>'+money(v.price,v.cur)+'</b></div>';
+        (v.operator?' · '+esc(v.operator):'')+(v.note?'<br><span style="color:var(--mut);font-size:12px">'+esc(v.note)+'</span>':'')+'</span><b>'+money(v.price,v.cur)+(kzt(v.price,v.cur)?'<br><span style="font-weight:500;color:var(--mut);font-size:12px">'+kzt(v.price,v.cur)+'</span>':'')+'</b></div>';
     });
     if(o.url)h+='<a class="lnk" target="_blank" rel="noopener" href="'+esc(o.url)+'">Открыть на Турвизоре →</a>';
     h+='</div></div>';
@@ -233,7 +243,7 @@ function renderList(){
 
 function renderBanners(){
   var h='';
-  if(DATA.demo)h+='<div class="banner warn">Это <b>тестовые данные</b>, а не реальные цены. Настоящий сбор подключается после первой разведки сайта.</div>';
+  if(DATA.demo)h+='<div class="banner warn">Это <b>тестовые данные</b>, а не реальные цены. Реальные цены появятся после первого настоящего сбора.</div>';
   if(STATUS&&STATUS.ok===false){
     h+='<div class="banner err">Последний сбор не удался: '+esc((STATUS.errors||[]).slice(0,3).join('; ')||'причина неизвестна')+
       '. Показаны данные прошлого успешного сбора.</div>';
@@ -241,7 +251,8 @@ function renderBanners(){
     h+='<div class="banner warn">Часть направлений не собралась ('+STATUS.errors.length+'), по ним показаны старые данные.</div>';
   }
   $('banners').innerHTML=h;
-  $('sub').textContent='обновлено '+fmtTime(DATA.generated)+' · '+(DATA.adults||2)+' взрослых · отели '+DATA.min_stars+'–5★';
+  $('sub').textContent='обновлено '+fmtTime(DATA.generated)+' · '+(DATA.adults||2)+' взрослых · отели '+DATA.min_stars+'–5★'+
+    (DATA.rub_kzt?' · цены Турвизора в ₽, 1 ₽ ≈ '+String(DATA.rub_kzt).replace('.',',')+' ₸':' · цены в ₽');
 }
 
 function renderAll(){renderNav();renderList()}
@@ -249,7 +260,7 @@ function renderAll(){renderNav();renderList()}
 document.addEventListener('click',function(e){
   var b=e.target.closest('[data-dest],[data-resort],[data-dep],[data-kind],[data-star]');
   if(b){
-    if(b.hasAttribute('data-dest')){S.dest=b.getAttribute('data-dest');S.resort=DATA.destinations[S.dest].focus_resort||null;S.dep='*'}
+    if(b.hasAttribute('data-dest')){S.dest=b.getAttribute('data-dest');S.resort=focusOf(S.dest);S.dep='*'}
     else if(b.hasAttribute('data-resort')){S.resort=b.getAttribute('data-resort')||null}
     else if(b.hasAttribute('data-dep')){S.dep=b.getAttribute('data-dep')}
     else if(b.hasAttribute('data-kind')){S.kind=b.getAttribute('data-kind')}
@@ -274,7 +285,7 @@ function load(){
   ]).then(function(res){
     DATA=res[0];STATUS=res[1];
     if(!DATA.destinations[S.dest])S.dest=Object.keys(DATA.destinations)[0];
-    if(S.resort===null&&S.dest&&DATA.destinations[S.dest].focus_resort&&!LS.get('tv-state',null))S.resort=DATA.destinations[S.dest].focus_resort;
+    if(S.resort===null&&S.dest&&!LS.get('tv-state',null))S.resort=focusOf(S.dest);
     renderBanners();renderAll();
   }).catch(function(){
     $('sub').textContent='';

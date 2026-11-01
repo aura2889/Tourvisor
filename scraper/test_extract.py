@@ -75,6 +75,52 @@ def test_find_ids():
     assert found == {"Актау": 5, "Астана": 2, "Алматы": 3, "ОАЭ": 9, "Грузия": 22}, found
 
 
+def _real():
+    import json
+    from datetime import date
+    cfg = json.loads((Path(__file__).resolve().parent.parent / "config.json").read_text(encoding="utf-8"))
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "modresult.json").read_text(encoding="utf-8"))
+    return cfg, fx, date(2026, 11, 1)
+
+
+def test_real_modresult_aktau_dubai():
+    """Настоящие ответы Турвизора (разведка 2026-11-01): Актау -> ОАЭ."""
+    import aggregate as agg
+    cfg, fx, today = _real()
+    ctx = {"dest": "dubai", "dep": "Актау", "dep_id": 74, "country_id": 9, "country": "ОАЭ", "cur": "RUB"}
+    raw = ts.offers_from_modresult(fx["aktau_uae"], ctx)
+    assert len(raw) == 66
+    data = agg.build_data(raw, cfg, today=today)
+    assert data["stats"]["accepted"] == 35          # Шарджа и Фуджейра отсеяны, остался только Дубай
+    assert {o["resort"] for o in data["offers"]} == {"Дубай"}
+    assert all(o["stars"] >= 3 for o in data["offers"])
+    best = data["offers"][0]
+    assert best["price"] == 115700 and best["cur"] == "RUB" and best["dep"] == "Актау"
+    assert best["flight"] == "regular" and "FlyArystan" in best["note"] and best["operator"] == "Kompas (KZ)"
+    assert best["hotel"] == "Concorde Deira Hotel (Ex. Golden Tulip Deira)", best["hotel"]
+    assert "x_hotel_codes=" in best["url"] and "s_flyfrom=74" in best["url"]
+
+
+def test_real_modresult_china_and_blocks_merge():
+    import aggregate as agg
+    cfg, fx, today = _real()
+    ctx = {"dest": "china", "dep": "Алматы", "dep_id": 60, "country_id": 13, "country": "Китай", "cur": "RUB"}
+    # два блока ответа склеиваются в один набор туров, повторы по id не дублируются
+    once = ts.offers_from_modresult(fx["almaty_china"], ctx)
+    twice = ts.offers_from_modresult(fx["almaty_china"] + fx["almaty_china"], ctx)
+    assert len(once) == len(twice) > 0
+    data = agg.build_data(once, cfg, today=today)
+    assert data["mins"]["china|Алматы|tour"]["min"] == 139724
+
+
+def test_windows_cover_period():
+    from datetime import date
+    ws = list(ts.windows({"days_ahead": 60, "window_days": 20}, date(2026, 11, 1)))
+    assert ws[0][0] == date(2026, 11, 2) and ws[-1][1] == date(2026, 12, 31)
+    assert all((b - a).days <= 20 for a, b in ws)
+    assert all(ws[i + 1][0] > ws[i][1] for i in range(len(ws) - 1))
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -406,31 +406,172 @@ def resolve_ids(page, cap, cfg):
     return dep_ids, country_ids
 
 
-def collect_pair(page, cap, cfg, dest_key, dep_name, dep_id, country_id, hot):
+MODSEARCH = "/xml/modsearch.php"
+MODRESULT = "https://search3.tourvisor.ru/modresult.php"
+
+
+def merge_modresult(datas):
+    """Ответ modresult приходит кусками (блоками). Склеиваем справочники и собираем все туры."""
+    dec, ops, tours = {}, {}, []
+    for d in datas:
+        for k, v in (d.get("decode") or {}).items():
+            if isinstance(v, dict):
+                dec.setdefault(k, {}).update(v)
+        for o in d.get("operators") or []:
+            ops[o["id"]] = o
+        for blk in d.get("block") or []:
+            for h in blk.get("hotel") or []:
+                for t in h.get("tour") or []:
+                    tours.append((h["id"], t))
+    return dec, ops, tours
+
+
+def _hotel_name(name):
+    """Турвизор часто отдаёт названия ЗАГЛАВНЫМИ — приводим к виду «Red Castle Hotel»."""
+    name = (name or "").strip()
+    if name.isupper():
+        return re.sub(r"[A-Za-zА-Яа-яЁё]+", lambda m: m.group(0).capitalize(), name.lower())
+    return name
+
+
+def offers_from_modresult(datas, ctx):
+    """Сырые предложения из ответов поиска Турвизора (формат подтверждён разведкой 2026-11-01)."""
+    dec, ops, tours = merge_modresult(datas)
+    out, seen = [], set()
+    for hid, t in tours:
+        tid = t.get("id")
+        if tid in seen:
+            continue
+        seen.add(tid)
+        h = (dec.get("hotels") or {}).get(str(hid)) or {}
+        try:
+            stars = int(h.get("stars") or 0)
+        except (TypeError, ValueError):
+            stars = 0
+        meal = ((dec.get("meal") or {}).get(str(t.get("ml"))) or {}).get("name") or ""
+        note = ((dec.get("tourname") or {}).get(str(t.get("nm"))) or {}).get("name")
+        reg = t.get("reg")
+        out.append({
+            "dest": ctx["dest"], "kind": "tour", "dep": ctx["dep"],
+            "hotel": _hotel_name(h.get("name")), "stars": stars,
+            "resort": h.get("region") or "", "sub": h.get("subregion"), "country": h.get("country") or ctx.get("country"),
+            "price": t.get("pr"), "cur": ctx["cur"], "date": t.get("dt"), "nights": t.get("nt"),
+            "meal": agg.parse_meal(meal) or None,
+            "operator": (ops.get(t.get("op")) or {}).get("name"),
+            "flight": "regular" if reg == 1 else "charter" if reg == 2 else None,
+            "note": note,
+            "url": hotel_link(ctx, hid, t.get("dt"), t.get("nt")),
+        })
+    return out
+
+
+def tv_date(iso):
+    y, m, d = iso.split("-")
+    return "%s.%s.%s" % (d, m, y)
+
+
+def hotel_link(ctx, hotel_id, iso_date, nights):
+    """Ссылка на поиск именно этого отеля на эту дату на Турвизоре."""
+    if not iso_date:
+        return None
+    q = {"ts_dosearch": 1, "s_flyfrom": ctx["dep_id"], "s_country": ctx["country_id"],
+         "s_j_date_from": tv_date(iso_date), "s_j_date_to": tv_date(iso_date),
+         "s_nights_from": nights or "", "s_nights_to": nights or "", "s_adults": ctx.get("adults", 2),
+         "s_child": 0, "s_regular": 1, "s_currency": ctx.get("currency_param", 0), "x_hotel_codes": hotel_id}
+    return "https://tourvisor.ru/search.php?" + urlencode(q)
+
+
+def find_session(cap):
+    for _, url, *_ in cap.log:
+        m = re.search(r"[?&]session=([0-9a-f]{20,})", url)
+        if m:
+            return m.group(1)
+    return None
+
+
+def run_search(req, cfg, session, country_id, dep_id, d_from, d_to, regular):
+    """Один поиск на сайте: modsearch -> requestid -> опрос modresult, пока поиск не завершится."""
+    site = cfg["site"].rstrip("/")
+    ref = site + "/search.php"
+    q = {"datefrom": d_from.strftime("%d.%m.%Y"), "dateto": d_to.strftime("%d.%m.%Y"), "directflight": 0,
+         "regular": regular, "nightsfrom": cfg["nights_from"], "nightsto": cfg["nights_to"],
+         "adults": cfg["adults"], "child": 0, "meal": 0, "rating": 0, "country": country_id, "departure": dep_id,
+         "pricefrom": 0, "priceto": 0, "currency": cfg.get("currency_param", 0), "formmode": 0, "pricetype": 0,
+         "referrer": ref}
+    if session:
+        q["session"] = session
+    headers = {"Referer": ref, "Accept": "application/json, text/javascript, */*"}
+    r = req.get(site + MODSEARCH + "?" + urlencode(q), headers=headers, timeout=60_000)
+    rid = r.json()["result"]["requestid"]
+    datas, last = [], 0
+    deadline = time.time() + cfg.get("max_search_seconds", 150)
+    while time.time() < deadline:
+        qq = {"requestid": rid, "referrer": ref}
+        if last:
+            qq["lastblock"] = last
+        if session:
+            qq["session"] = session
+        d = req.get(MODRESULT + "?" + urlencode(qq), headers=headers, timeout=60_000).json().get("data") or {}
+        datas.append(d)
+        ids = [b["id"] for b in d.get("block") or [] if "id" in b]
+        if ids:
+            last = max(ids + [last])
+        st = d.get("status") or {}
+        if st.get("finished") == 1:
+            return datas, True
+        time.sleep(1.5)
+    return datas, False
+
+
+def windows(cfg, today):
+    """Сайт принимает окно дат около 20 дней, поэтому весь период режем на окна."""
+    start = today + timedelta(days=1)
+    end = today + timedelta(days=cfg["days_ahead"])
+    step = timedelta(days=cfg.get("window_days", 20))
+    cur = start
+    while cur <= end:
+        yield cur, min(cur + step, end)
+        cur = cur + step + timedelta(days=1)
+
+
+def fetch_rub_kzt():
+    """Курс рубля к тенге с сайта Нацбанка РК (для пометки «≈ в тенге»). None, если не удалось."""
+    import urllib.request
+    try:
+        url = "https://nationalbank.kz/rss/get_rates.cfm?fdate=" + date.today().strftime("%d.%m.%Y")
+        xml = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=20).read().decode("utf-8", "ignore")
+        for item in re.findall(r"<item>(.*?)</item>", xml, re.S):
+            if re.search(r"<title>\s*RUB\s*</title>", item):
+                rate = float(re.search(r"<description>\s*([\d.,]+)", item).group(1).replace(",", "."))
+                m = re.search(r"<quant>\s*([\d.]+)", item)
+                return round(rate / (float(m.group(1)) if m else 1.0), 4)
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def collect_hot(page, cap, cfg, dest_key, dep_name, dep_id, country_id):
+    """Горящие туры: страница сайта отдаёт карточки в самом HTML, разбираем их текст."""
     dcfg = cfg["destinations"][dest_key]
-    url = search_url(cfg, country_id, dep_id, hot=hot)
-    ctx = {"dest": dest_key, "dep": dep_name, "country": dcfg["country"], "kind": "hot" if hot else "tour",
-           "url": url, "cur": {0: "RUB", 1: "USD", 2: "EUR"}.get(cfg.get("currency_param", 0), "RUB")}
+    url = search_url(cfg, country_id, dep_id, hot=True)
     cap.reset()
     page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-    n_cards = wait_for_results(page, cfg["search_timeout_s"])
-    offers = []
-    for _, obj in cap.bodies:
-        offers += extract_offers_from_json(obj, ctx)
-    from_json = len(offers)
-    if not offers:
-        for card in page.evaluate(JS_CARDS):
-            raw = parse_card_text(card["text"], [dcfg["country"]])
-            if raw:
-                raw.update({"dest": dest_key, "dep": dep_name, "kind": ctx["kind"], "cur": raw.get("cur") or ctx["cur"],
-                            "url": card.get("href") or url})
-                offers.append(raw)
-    return offers, {"cards": n_cards, "json": from_json, "total": len(offers)}
+    page.wait_for_timeout(8000)
+    cards = page.evaluate(JS_CARDS)
+    out = []
+    for card in cards:
+        raw = parse_card_text(card["text"], [dcfg["country"]])
+        if raw:
+            raw.update({"dest": dest_key, "dep": dep_name, "kind": "hot", "cur": raw.get("cur") or "RUB",
+                        "url": card.get("href") or url})
+            out.append(raw)
+    return out, {"cards": len(cards), "parsed": len(out), "sample": [c["text"][:260] for c in cards[:2]]}
 
 
 def run_scrape(cfg):
     from playwright.sync_api import sync_playwright
     prev = read_json(ROOT / "data.json")
+    today = date.today()
     status = {"ok": False, "time": datetime.now(TZ).strftime("%Y-%m-%dT%H:%M:%S%z"), "mode": "scrape",
               "pairs": {}, "errors": []}
     raw, failed = [], []
@@ -442,22 +583,43 @@ def run_scrape(cfg):
         try:
             dep_ids, country_ids = resolve_ids(page, cap, cfg)
             status["ids"] = {"departures": dep_ids, "countries": country_ids}
+            if not cap.log:
+                page.goto(cfg["site"].rstrip("/") + "/search.php", wait_until="domcontentloaded", timeout=60_000)
+                page.wait_for_timeout(6000)
+            session = find_session(cap)
+            status["session_found"] = bool(session)
             for dest_key, dcfg in cfg["destinations"].items():
                 for dep in cfg["departures"]:
-                    for hot in (False, True):
-                        label = "%s|%s|%s" % (dest_key, dep, "hot" if hot else "tour")
-                        try:
-                            offers, info = collect_pair(page, cap, cfg, dest_key, dep, dep_ids[dep],
-                                                        country_ids[dcfg["country"]], hot)
-                            status["pairs"][label] = info
-                            raw += offers
-                            if info["total"] == 0:
-                                (DEBUG / ("empty_%s.html" % re.sub(r"\W+", "_", label))).write_text(
-                                    page.content()[:400_000], encoding="utf-8")
-                        except Exception as e:  # noqa: BLE001
-                            status["errors"].append("%s: %s" % (label, str(e)[:200]))
-                            failed.append((dest_key, dep))
-                        time.sleep(random.uniform(cfg["delay_min"], cfg["delay_max"]))
+                    ctx = {"dest": dest_key, "dep": dep, "dep_id": dep_ids[dep], "country_id": country_ids[dcfg["country"]],
+                           "country": dcfg["country"], "cur": "RUB", "adults": cfg["adults"],
+                           "currency_param": cfg.get("currency_param", 0)}
+                    label = "%s|%s|tour" % (dest_key, dep)
+                    got, errs, unfinished = [], 0, 0
+                    for d_from, d_to in windows(cfg, today):
+                        for regular in cfg.get("regular_modes", [1, 2]):
+                            try:
+                                datas, done = run_search(bctx.request, cfg, session, ctx["country_id"], ctx["dep_id"],
+                                                         d_from, d_to, regular)
+                                got += offers_from_modresult(datas, ctx)
+                                unfinished += 0 if done else 1
+                            except Exception as e:  # noqa: BLE001
+                                errs += 1
+                                if errs <= 2:
+                                    status["errors"].append("%s %s..%s: %s" % (label, d_from, d_to, str(e)[:160]))
+                            time.sleep(random.uniform(1.0, 2.5))
+                    status["pairs"][label] = {"offers": len(got), "errors": errs, "unfinished": unfinished}
+                    raw += got
+                    if errs and not got:
+                        failed.append((dest_key, dep))
+                    # горящие
+                    hl = "%s|%s|hot" % (dest_key, dep)
+                    try:
+                        hot, info = collect_hot(page, cap, cfg, dest_key, dep, ctx["dep_id"], ctx["country_id"])
+                        status["pairs"][hl] = info
+                        raw += hot
+                    except Exception as e:  # noqa: BLE001
+                        status["errors"].append("%s: %s" % (hl, str(e)[:160]))
+                    time.sleep(random.uniform(cfg["delay_min"], cfg["delay_max"]))
         except SetupNeeded as e:
             status["errors"].append(str(e))
             status["setup_needed"] = True
@@ -471,16 +633,21 @@ def run_scrape(cfg):
     if status.get("setup_needed") or not raw:
         if not raw and not status["errors"]:
             status["errors"].append("ни одного предложения: сайт не отдал результаты (блокировка или смена вёрстки)")
+        status["ok"] = False
         write_json(ROOT / "status.json", status)
         print(json.dumps(status, ensure_ascii=False, indent=1))
         return 1
 
-    data = agg.build_data(raw, cfg, prev=prev, failed_pairs=failed, today=date.today())
-    status["ok"] = not status["errors"]
+    meta = {}
+    rate = fetch_rub_kzt() if cfg.get("rub_to_kzt") == "auto" else cfg.get("rub_to_kzt")
+    if isinstance(rate, (int, float)) and rate > 0:
+        meta["rub_kzt"] = rate
+    data = agg.build_data(raw, cfg, prev=prev, failed_pairs=failed, today=today, meta=meta)
+    status["ok"] = not any(v.get("errors") for v in status["pairs"].values()) and not status["errors"]
     status["stats"] = data["stats"]
     write_json(ROOT / "data.json", data)
     write_json(ROOT / "status.json", status)
-    print(json.dumps({"stats": data["stats"], "errors": status["errors"]}, ensure_ascii=False))
+    print(json.dumps({"stats": data["stats"], "errors": status["errors"], "rate": meta.get("rub_kzt")}, ensure_ascii=False))
     return 0
 
 

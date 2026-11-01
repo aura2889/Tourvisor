@@ -4,14 +4,25 @@
   "min_stars": 3,
   "nights_from": 6,
   "nights_to": 14,
-  "days_ahead": 120,
+  "days_ahead": 60,
   "currency_param": 0,
   "delay_min": 3.0,
   "delay_max": 7.0,
-  "search_timeout_s": 120,
-  "departures": ["Актау", "Астана", "Алматы"],
-  "departure_ids": {},
-  "country_ids": {"ОАЭ": 9, "Китай": 13},
+  "departures": [
+    "Актау",
+    "Астана",
+    "Алматы"
+  ],
+  "departure_ids": {
+    "Актау": 74,
+    "Астана": 59,
+    "Алматы": 60
+  },
+  "country_ids": {
+    "ОАЭ": 9,
+    "Китай": 13,
+    "Грузия": 54
+  },
   "destinations": {
     "dubai": {
       "title": "Дубай",
@@ -26,8 +37,15 @@
     "georgia": {
       "title": "Грузия",
       "country": "Грузия",
-      "focus_resort": "Кудаури"
+      "focus_regex": "гудаури|кудаури"
     }
   },
-  "history_days": 90
+  "history_days": 90,
+  "window_days": 20,
+  "regular_modes": [
+    1,
+    2
+  ],
+  "max_search_seconds": 150,
+  "rub_to_kzt": "auto"
 }

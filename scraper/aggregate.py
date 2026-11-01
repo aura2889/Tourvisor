@@ -23,7 +23,7 @@ NIGHTS_RE = re.compile(r"(\d{1,2})\s*(?:нч|ноч|н\.)", re.I)
 
 MEALS = [
     ("ultra", re.compile(r"ультра", re.I)),
-    ("AI", re.compile(r"все\s*включено|all\s*incl", re.I)),
+    ("AI", re.compile(r"в[сc][её]\s*включено|all\s*incl", re.I)),
     ("FB", re.compile(r"полный\s*пансион|завтрак,\s*обед,\s*ужин|full\s*board", re.I)),
     ("HB", re.compile(r"полупансион|завтрак,\s*ужин|half\s*board", re.I)),
     ("BB", re.compile(r"завтрак|bed\s*&?\s*breakfast", re.I)),
@@ -115,11 +115,11 @@ def norm_offer(raw, cfg, today=None):
         return None
     # направление задано поиском, но курорт известен — всё равно отсекаем чужие курорты (Абу-Даби и т.п.)
     resort_l = (raw.get("resort") or "").strip().lower()
-    if resort_l:
-        inc = cfg["destinations"][dest].get("resort_include")
-        exc = cfg["destinations"][dest].get("resort_exclude")
-        if (inc and not re.search(inc, resort_l, re.I)) or (exc and re.search(exc, resort_l, re.I)):
-            return None
+    inc = cfg["destinations"][dest].get("resort_include")
+    exc = cfg["destinations"][dest].get("resort_exclude")
+    # если для направления важен курорт (Дубай), а у отеля он не указан — не берём, чтобы не пустить чужие эмираты
+    if (inc and not re.search(inc, resort_l, re.I)) or (exc and resort_l and re.search(exc, resort_l, re.I)):
+        return None
     stars = raw.get("stars")
     if not isinstance(stars, int) or stars < cfg.get("min_stars", 3):
         return None
@@ -141,6 +141,8 @@ def norm_offer(raw, cfg, today=None):
         "flight": raw.get("flight"),
         "date": dt,
         "url": raw.get("url"),
+        "sub": raw.get("sub") or None,
+        "note": raw.get("note") or None,
     }
 
 
@@ -196,6 +198,7 @@ def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=Non
     today = today or date.today()
     prev = prev or {}
     normed = [o for o in (norm_offer(r, cfg, today) for r in raw_offers) if o]
+    normed.sort(key=lambda o: o["date"])   # у склеенной строки ссылка и пометка — от самой ранней даты
     groups = group_offers(normed)
 
     # не больше max_per_pair самых дешёвых строк на пару (направление, город вылета, вид)
@@ -226,7 +229,7 @@ def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=Non
         "today": today.isoformat(),
         "adults": cfg.get("adults", 2),
         "min_stars": cfg.get("min_stars", 3),
-        "destinations": {k: {"title": d["title"], "focus_resort": d.get("focus_resort")}
+        "destinations": {k: {"title": d["title"], "focus_regex": d.get("focus_regex")}
                          for k, d in cfg["destinations"].items()},
         "departures": cfg.get("departures", []),
         "offers": kept,
