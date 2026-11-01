@@ -1,0 +1,458 @@
+<div class="trv-country-choose-dropdown">
+    <div class="trv-country-choose-dropdown__arrow">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="12" viewBox="0 0 24 12" fill="none">
+            <path d="M12 0C12 6.62743 6.62743 12 0 12H24C17.3726 12 12 6.62743 12 0Z" fill="white"/>
+        </svg>
+    </div>
+    <div class="trv-country-choose-dropdown__header">
+        <div class="trv-country-choose-dropdown__title">Выберите страну</div>
+        <div class="trv-country-choose-dropdown__desc"></div>
+    </div>
+    <div class="trv-country-choose-dropdown__footer">
+        <div class="trv-country-choose-dropdown__button trv-country-choose-dropdown__apply">Переключить</div>
+        <div class="trv-country-choose-dropdown__button trv-country-choose-dropdown__close">Оставить Россию</div>
+    </div>
+</div>
+
+<style>
+    .trv-country-choose {
+        position: absolute;
+    }
+    
+    .trv-country-choose-dropdown {
+        position: absolute;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        z-index: 12;
+
+        display: flex;
+        width: 370px;
+        padding: 20px 16px 16px 16px;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        border-radius: 12px;
+        background: #FFF;
+    }
+
+    .trv-country-choose-dropdown__arrow {
+        position: absolute;
+        left: var(--arrow-left, 20px);
+        top: 0;
+        transform: translate(-50%, -100%);
+        display: flex;
+    }
+
+    .trv-country-choose-dropdown.trv-country-choose-dropdown--active {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: all;
+    }
+
+    .trv-country-choose-dropdown__header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        align-self: stretch;
+    }
+
+    .trv-country-choose-dropdown__title {
+        color: #2B3F5A;
+        text-align: center;
+        font-size: 16px;
+        font-style: normal;
+        font-weight: 700;
+        line-height: 24px;
+    }
+
+    .trv-country-choose-dropdown__desc {
+        color: #2B3F5A;
+        text-align: center;
+        font-size: 14px;
+        font-style: normal;
+        font-weight: 500;
+        line-height: 20px;
+
+        min-height: 40px;
+    }
+
+    .trv-country-choose-dropdown__footer {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        align-self: stretch;
+    }
+
+    .trv-country-choose-dropdown__button {
+        text-align: center;
+        font-size: 14px;
+        font-style: normal;
+        font-weight: 500;
+        line-height: 20px;
+        letter-spacing: -0.28px;
+
+        display: flex;
+        padding: 12px 16px;
+        justify-content: center;
+        align-items: flex-start;
+        flex: 1 0 0;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: opacity .3s ease;
+    }
+
+    .trv-country-choose-dropdown__button:hover {
+        opacity: 0.8;
+    }
+
+    .trv-country-choose-dropdown__apply {
+        color: #FFF;
+        background: #027AD0;
+    }
+
+    .trv-country-choose-dropdown__close {
+        color: #2B3F5A;
+        background: #F4F7FB;
+    }
+
+    .trv-header__language.trv-header__language--country-choose {
+        z-index: 13;
+        pointer-events: none;
+    }
+
+    .trv-header__language.trv-header__language--country-choose::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 100%;
+        height: 19px;
+        transform: translate(-50%, -50%);
+        z-index: -1;
+        background-color: #fff;
+        border-radius: 8px;
+        padding: 6px;
+        box-sizing: content-box;
+    }
+
+    .trv-header__language-mobile.trv-header__language-mobile--country-choose {
+        z-index: 13;
+        pointer-events: none
+    }
+
+    @media screen and (max-width: 1000px) {
+        .trv-country-choose-dropdown {
+            width: 374px;
+        }
+    }
+
+    @media screen and (max-width: 389px) {
+        .trv-country-choose-dropdown {
+            width: 340px;
+        }
+    }
+</style>
+
+<script>
+    (function () {
+        "use strict";
+
+        const SELECTORS = {
+            dropdown: ".trv-country-choose-dropdown",
+            overlay: ".trv-overlay",
+            desc: ".trv-country-choose-dropdown__desc",
+            applyBtn: ".trv-country-choose-dropdown__apply",
+            closeBtn: ".trv-country-choose-dropdown__close",
+            headerLang: ".trv-header__language",
+            headerLangMobile: ".trv-header__language-mobile",
+        };
+
+        const CSS = {
+            dropdownActive: "trv-country-choose-dropdown--active",
+            overlayActive: "trv-overlay--active",
+            headerLangActive: "trv-header__language--country-choose",
+            headerMobileActive: "trv-header__language-mobile--country-choose",
+        };
+
+        const ALLOWED_COUNTRY_CODES = ["by", "kz", "uz", "kg"];
+        const COUNTRY_CODE_MAP = { kz: "kz", by: "by", uz: "uz", kg: "kg" };
+
+        const POPOVER_OFFSET_TOP = 13;
+        const POPOVER_OFFSET_LEFT = 226;
+        const POPOVER_SCREEN_MARGIN = 8;
+        const RESIZE_DEBOUNCE_MS = 100;
+
+        function getElements() {
+            return {
+                dropdown: document.querySelector(SELECTORS.dropdown),
+                overlay: document.querySelector(SELECTORS.overlay),
+                desc: document.querySelector(SELECTORS.desc),
+                applyBtn: document.querySelector(SELECTORS.applyBtn),
+                closeBtn: document.querySelector(SELECTORS.closeBtn),
+                headerLang: document.querySelector(SELECTORS.headerLang),
+                headerLangMobile: document.querySelector(SELECTORS.headerLangMobile),
+            };
+        }
+
+        async function fetchGeoIp() {
+            const res = await fetch("https://tourvisor.ru/country/geoip");
+            if (!res.ok) {
+                return null;
+            }
+
+            return res.json();
+        }
+
+        async function resolveIpCountry() {
+            const data = await fetchGeoIp();
+            if (!data || !data.country_code) {
+                return null;
+            }
+
+            const countryEnum = COUNTRY_CODE_MAP[data.country_code.toLowerCase()] ?? "ru";
+            if (!ALLOWED_COUNTRY_CODES.includes(countryEnum)) {
+                return null;
+            }
+
+            const country = (await trvGetCountryByEnum(countryEnum)) ?? null;
+            if (!country?.namePrepositional) {
+                return null;
+            }
+
+            return { country, countryEnum };
+        }
+
+        // async function resolveIpCountry() {
+        //     const urlParams = new URLSearchParams(window.location.search);
+        //     let countryEnum = urlParams.get('tvremotetestcountry');
+        //     if (!countryEnum) {
+        //         const data = await fetchGeoIp();
+        //         if (!data || !data.country_code) {
+        //             return null;
+        //         }
+        //         countryEnum = data.country_code.toLowerCase();
+        //     }
+        //
+        //     if (!countryEnum) {
+        //         return null;
+        //     }
+        //
+        //     if (!ALLOWED_COUNTRY_CODES.includes(countryEnum)) {
+        //         return null;
+        //     }
+        //
+        //     const country = (await trvGetCountryByEnum(countryEnum)) ?? null;
+        //     if (!country?.namePrepositional) {
+        //         return null;
+        //     }
+        //
+        //     return { country, countryEnum };
+        // }
+
+        function showPopup(els) {
+            const { dropdown, overlay } = els;
+            if (!dropdown || !overlay) {
+                return;
+            }
+
+            overlay.classList.add(CSS.overlayActive);
+            dropdown.classList.add(CSS.dropdownActive);
+
+            repositionPopover(els);
+            watchResizeWhileOpen(els);
+
+            if (typeof bdScroll !== "undefined") {
+                bdScroll?.disable?.();
+            }
+        }
+
+        function hidePopup(els) {
+            const { dropdown, overlay, headerLang, headerLangMobile } = els;
+            if (!dropdown || !overlay) {
+                return;
+            }
+
+            overlay.classList.remove(CSS.overlayActive);
+            dropdown.classList.remove(CSS.dropdownActive);
+            headerLang?.classList.remove(CSS.headerLangActive);
+            headerLangMobile?.classList.remove(CSS.headerMobileActive);
+
+            if (typeof bdScroll !== "undefined") {
+                bdScroll?.enable?.();
+            }
+        }
+
+        function repositionPopover(els) {
+            const { dropdown, headerLang, headerLangMobile } = els;
+            if (!dropdown) {
+                return;
+            }
+
+            headerLang?.classList.remove(CSS.headerLangActive);
+            headerLangMobile?.classList.remove(CSS.headerMobileActive);
+
+            const isDesktopVisible = headerLang && headerLang.offsetWidth > 0 && headerLang.offsetHeight > 0;
+
+            if (isDesktopVisible) {
+                placePopoverNear(headerLang, dropdown, true);
+                headerLang.classList.add(CSS.headerLangActive);
+            } else if (headerLangMobile) {
+                placePopoverNear(headerLangMobile, dropdown, false);
+                headerLangMobile.classList.add(CSS.headerMobileActive);
+            }
+        }
+
+        function placePopoverNear(triggerEl, popoverEl, isDesktop) {
+            const rect = triggerEl.getBoundingClientRect();
+            const popoverWidth = popoverEl.offsetWidth;
+
+            let left = rect.left - (isDesktop ? POPOVER_OFFSET_LEFT : 0);
+
+            const overflowRight = left + popoverWidth - window.innerWidth;
+            if (overflowRight > 0) {
+                left -= overflowRight + POPOVER_SCREEN_MARGIN;
+            }
+
+            popoverEl.style.position = "fixed";
+            popoverEl.style.top = `${rect.bottom + POPOVER_OFFSET_TOP}px`;
+            popoverEl.style.left = `${left}px`;
+
+            const arrowLeft = rect.left + rect.width / 2 - left;
+            popoverEl.style.setProperty("--arrow-left", `${arrowLeft}px`);
+        }
+
+        function watchResizeWhileOpen(els) {
+            let resizeTimer;
+
+            const handleResize = () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(() => repositionPopover(els), RESIZE_DEBOUNCE_MS);
+            };
+
+            window.addEventListener("resize", handleResize);
+
+            watchOverlayClose(els.overlay, () => {
+                window.removeEventListener("resize", handleResize);
+            });
+        }
+
+        function bindCloseHandlers(els) {
+            let closed = false;
+
+            const close = () => {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                handleClose(els);
+            };
+
+            els.closeBtn?.addEventListener("click", close);
+            watchOverlayClose(els.overlay, close);
+        }
+
+        function watchOverlayClose(overlay, callback) {
+            if (!overlay) {
+                return;
+            }
+
+            const observer = new MutationObserver(() => {
+                if (!overlay.classList.contains(CSS.overlayActive)) {
+                    observer.disconnect();
+                    callback();
+                }
+            });
+
+            observer.observe(overlay, { attributeFilter: ["class"] });
+        }
+
+        function renderDesc(els, countryNamePrepositional) {
+            if (!els.desc) {
+                return;
+            }
+
+            els.desc.innerHTML = `Похоже, вы сейчас в ${countryNamePrepositional}.<br>Переключить страну?`;
+        }
+
+        async function renderCloseButton(els) {
+            const { closeBtn } = els;
+            if (!closeBtn || !trvDefaultCountryEnum) {
+                return;
+            }
+
+            const country = await trvGetCountryByEnum(trvDefaultCountryEnum);
+            if (country?.nameAccusative) {
+                closeBtn.textContent = `Оставить ${country.nameAccusative}`;
+            }
+        }
+
+        function bindApplyButton(els, country) {
+            els.applyBtn?.addEventListener("click", () => applyCountry(country));
+        }
+
+        function applyCountry(country) {
+            if (!country) {
+                return;
+            }
+
+            const { id, cityId, currencyId } = country;
+            trvUpdateTvSearchDepartureCookie(cityId);
+            trvUpdateTrvCookieCurrencyId(currencyId);
+            trvUpdateTrvCookieCountryId(id);
+            location.reload();
+        }
+
+        async function handleClose(els) {
+            hidePopup(els);
+
+            if (!trvDefaultCountryEnum) {
+                return;
+            }
+
+            const country = await trvGetCountryByEnum(trvDefaultCountryEnum);
+            if (!country?.id) {
+                return;
+            }
+
+            const { id, cityId, currencyId } = country;
+            trvUpdateTvSearchDepartureCookie(cityId);
+            trvUpdateTrvCookieCurrencyId(currencyId);
+            trvUpdateTrvCookieCountryId(id);
+        }
+
+        async function init() {
+            const savedCountryId = trvGetTrvCookieCountryId?.();
+            const globalVars = window?.trvGlobalVars || [];
+            const isB2b = globalVars.find(item => item.name === 'isB2b')?.value;
+            if (savedCountryId || Boolean(isB2b)) {
+                return;
+            }
+
+            let result;
+            try {
+                result = await resolveIpCountry();
+            } catch (err) {
+                return;
+            }
+
+            if (!result) {
+                return;
+            }
+
+            const { country } = result;
+            const els = getElements();
+
+            showPopup(els);
+            renderDesc(els, country.namePrepositional);
+            bindApplyButton(els, country);
+            bindCloseHandlers(els);
+            await renderCloseButton(els);
+        }
+
+        init();
+    })();
+
+</script>

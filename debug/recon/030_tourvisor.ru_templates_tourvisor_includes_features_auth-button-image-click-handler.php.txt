@@ -1,0 +1,30 @@
+<script>
+    {
+        document.querySelectorAll(".trv-header__add-menu-login .tv-auth-button").forEach((containerNode) => {
+            const previousNode = containerNode.previousElementSibling;
+            if (!(previousNode instanceof HTMLImageElement)) {
+                return;
+            }
+
+            previousNode.addEventListener("click", () => {
+                const buttonNode = containerNode.querySelector(".TVAuthButton");
+                if (buttonNode instanceof HTMLElement) {
+                    buttonNode.click();
+                }
+            });
+        });
+    }
+</script>
+
+<style>
+    .trv-header__add-menu-login:has(img + .tv-auth-button) {
+        cursor: pointer;
+        transition: opacity .3s;
+    }
+    .trv-header__add-menu-login:has(img + .tv-auth-button):hover{
+        opacity: var(--trvLinksHoverOpacity);
+    }
+    .trv-header__add-menu-login:has(img + .tv-auth-button) .tv-auth-button .TVButtonHover:hover {
+        opacity: 1 !important;
+    }
+</style>
