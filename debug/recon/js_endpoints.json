@@ -1,0 +1,92 @@
+{
+ "init.js": {
+  "php": [],
+  "ctx": []
+ },
+ "authbutton.min.js": {
+  "php": [],
+  "ctx": []
+ },
+ "cartmng.min.js": {
+  "php": [],
+  "ctx": [
+   "void 0:e.message)||e),t._instance.show()})},e.prototype.clearMergeFavorites=function(){return this._setActiveTouristCart(),p.cartCatalog.setOpenCartId(0),this._actualizeActiveCart()},e.prototype.clear=function(){this._deleteFromStorage(),this._disconnectActualizer(),this._clearCatalogData(),this._clearCartData(),L.cartManagerEvents.Changed.fire({CartCount:this._Tour",
+   "Catalog.getActualCartId(),e=this._getStorageCartId();e>0&&t!==e&&(this._isHideOpenCart=!0,p.cartCatalog.setOpenCartId(0),this._initFromStorage())},e.prototype._actualizeActiveCart=function(){var t=this;return this._disconnectActualizer(),new Promise(function(e){t._cartActualizer.ActualizationEnd.add(new _.Delegate(t,function(){t._updateInstance(),t._updateCart(),L.c",
+   "unction(e){var o=t._cartService.cloneRange({CartId:s,RangeId:e.id});r.push(o)})}return p.cartCatalog.setMergeCartId(0),Promise.all(r).then(function(){return t._actualizeActiveCart()})},e.prototype._getFavoriteCartId=function(){var t=this._getPermissions().IsAvailableCopyFavorites,e=p.cartCatalog.getActualCartId();return t&&(e=p.cartCatalog.getActiveCartId()||0),e},e"
+  ]
+ },
+ "core.min.js": {
+  "php": [
+   "//tourvisor.ru/module/ajax_country.php",
+   "//tourvisor.ru/module/ajax_manager_actions.php",
+   "//tourvisor.ru/redirect.php",
+   "//tourvisor.ru/xml/cart2.php",
+   "//tourvisor.ru/xml/export.php",
+   "//tourvisor.ru/xml/modact-partners.php",
+   "//tourvisor.ru/xml/modact.php",
+   "//tourvisor.ru/xml/modcalendar.php",
+   "//tourvisor.ru/xml/modgeo.php",
+   "//tourvisor.ru/xml/modhot.php",
+   "//tourvisor.ru/xml/modmin.php",
+   "//tourvisor.ru/xml/modpay.php",
+   "//tourvisor.ru/xml/promocodes.php",
+   "//tourvisor.ru/xml/sendrequest.php",
+   "//tourvisor.ru/xml/slider.php",
+   "//tourvisor.ru/xml/track.php",
+   "//vk.com/clip_ext.php",
+   "//vk.com/share.php",
+   "//vk.com/video_ext.php",
+   "//www.facebook.com/sharer/sharer.php"
+  ],
+  "ctx": []
+ },
+ "coreapps.min.js": {
+  "php": [
+   "//tourvisor.ru/about.php"
+  ],
+  "ctx": []
+ },
+ "coremngs.min.js": {
+  "php": [
+   "/xml/autocomplete.php"
+  ],
+  "ctx": []
+ },
+ "coresearch.min.js": {
+  "php": [
+   "//tourvisor.ru/xml/listdev.php",
+   "/modresult.php",
+   "/xml/autocomplete.php",
+   "/xml/getdates.php",
+   "/xml/getnights.php",
+   "/xml/modsearch.php"
+  ],
+  "ctx": []
+ },
+ "hotoffermng.min.js": {
+  "php": [],
+  "ctx": [
+   "=i(45112),_=i(3742),f=function(t){function e(){var e=null!==t&&t.apply(this,arguments)||this;return e._defaultSortProp=\"created_at\",e}return r(e,t),e.prototype.actualize=function(t,e,i){return this._addReferer(i),u.cors.update({Url:\"\".concat(this.url,\"/\").concat(t,\"/actualize\")}),u.cors.get(i,{ClientId:e}).catch(function(t){return _.logService.error(t)})},e.prototyp",
+   "ccess)(this),t.prototype.destroy.call(this)},e.prototype._init=function(){var t=(0,O.getClientSettingsData)();this._Departure=D.clientUtils.getFlyFrom(t),this._actualizeData=this._actualizeData.bind(this),this._onOfferReaded=this._onOfferReaded.bind(this),this._onOfferActualized=this._onOfferActualized.bind(this),this._onOfferSaved=this._onOfferSaved.bind(this),this",
+   "y_id:this._Currency},e=(0,u.getManagerId)();return e>0&&(t.tsmng=e),m.hotOfferService.read(this._OfferId,t,this._clientId).then(this._onOfferReaded).then(this._actualizeData).catch(w.errorCatched)}this._createOffer({PreviewVisibled:!1})},e.prototype._onActionClicked=function(t){var e=t.Action,i=t.CallBack;switch(e){case M.HotOfferAction.Save:this._saveOffer(t);break",
+   ",this._clientId).then(function(t){return{PictureId:t&&t.id||0}}):i||r?Promise.resolve({PictureId:i}):Promise.reject(new Error(\"Empty arguments\"))},e.prototype._actualizeData=function(){return c.hotOffersStore.getItem(this._OfferId).TourId?(this._instance.update({ActualizeVisibled:!0}),m.hotOfferService.actualize(this._OfferId,this._clientId,{currency_id:this._Curren",
+   "mise.resolve(null)},e.prototype._onOfferActualized=function(t){if(this._instance.update({ActualizeVisibled:!1}),!t||t.error)throw new Error(\"Feed module: can't actualize offer\");if(this._OfferId===t.hot_offer_id){var e=c.hotOffersStore.getItem(this._OfferId),i=z.hotOfferUtils.isSameOffersPrice(t,e),n=z.hotOfferUtils.isSameOffersStatus(t,e);if(!i||!n)return this._edi"
+  ]
+ },
+ "ordermng.min.js": {
+  "php": [
+   "/xml/modact-alternative.php"
+  ],
+  "ctx": [
+   "=o(45112),c=o(3742),_=function(t){function e(){var e=null!==t&&t.apply(this,arguments)||this;return e._defaultSortProp=\"created_at\",e}return r(e,t),e.prototype.actualize=function(t,e,o){return this._addReferer(o),u.cors.update({Url:\"\".concat(this.url,\"/\").concat(t,\"/actualize\")}),u.cors.get(o,{ClientId:e}).catch(function(t){return c.logService.error(t)})},e.prototyp"
+  ]
+ },
+ "resultsmng.min.js": {
+  "php": [],
+  "ctx": []
+ },
+ "runtime.min.js": {
+  "php": [],
+  "ctx": []
+ }
+}

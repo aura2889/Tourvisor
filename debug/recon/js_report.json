@@ -1,0 +1,76 @@
+{
+ "time": "2026-11-01T20:15:48.592342+05:00",
+ "calls": [
+  {
+   "url": "/xml/actdetail.php?tourid=99301477706295&flights=1&request=1&format=json",
+   "status": 200,
+   "size": 54
+  },
+  {
+   "url": "/xml/actdetail.php?tourid=99301477706295&flights=1&format=json",
+   "status": 200,
+   "size": 54
+  },
+  {
+   "url": "/xml/actualize.php?tourid=99301477706295&request=2&format=json",
+   "status": 200,
+   "size": 60
+  },
+  {
+   "url": "/xml/hotel.php?hotelcode=8868&imgbig=1&format=json",
+   "status": 200,
+   "size": 49
+  },
+  {
+   "url": "/api/v1.2/hotels/8868",
+   "status": 403,
+   "size": 591
+  },
+  {
+   "url": "/api/v1.2/tours/99301477706295",
+   "status": 403,
+   "size": 591
+  },
+  {
+   "url": "/api/v1.2/tours/99301477706295/flights",
+   "status": 403,
+   "size": 591
+  },
+  {
+   "url": "/xml/actdetail.php?tourid=99301477706298&flights=1&request=1&format=json",
+   "status": 200,
+   "size": 54
+  },
+  {
+   "url": "/xml/actdetail.php?tourid=99301477706298&flights=1&format=json",
+   "status": 200,
+   "size": 54
+  },
+  {
+   "url": "/xml/actualize.php?tourid=99301477706298&request=2&format=json",
+   "status": 200,
+   "size": 60
+  },
+  {
+   "url": "/xml/hotel.php?hotelcode=15752&imgbig=1&format=json",
+   "status": 200,
+   "size": 49
+  },
+  {
+   "url": "/api/v1.2/hotels/15752",
+   "status": 403,
+   "size": 591
+  },
+  {
+   "url": "/api/v1.2/tours/99301477706298",
+   "status": 403,
+   "size": 591
+  },
+  {
+   "url": "/api/v1.2/tours/99301477706298/flights",
+   "status": 403,
+   "size": 591
+  }
+ ],
+ "tours_found": 277
+}
