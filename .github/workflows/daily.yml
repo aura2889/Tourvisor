@@ -63,7 +63,7 @@ jobs:
           git add data.json status.json
           if [ "$MODE" = "recon" ]; then
             # небольшие файлы разведки кладём в репозиторий, чтобы их можно было прочитать без скачивания артефакта
-            find debug/recon -type f -size -300k \( -name '*.json' -o -name '*.txt' -o -name '*.png' \) 2>/dev/null | head -60 | xargs -r git add -f
+            find debug/recon -type f \( -name 'key_*' -o -name 'recon.json' -o -name '*.png' \) -size -500k 2>/dev/null | head -80 | xargs -r git add -f
           fi
           git add -f debug/last.png 2>/dev/null || true
           if git diff --cached --quiet; then

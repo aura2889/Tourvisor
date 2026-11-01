@@ -288,7 +288,12 @@ class Capture:
                     self.bodies.append((resp.url, json.loads(body)))
                 except ValueError:
                     pass
-            if self.keep_dir is not None and req.resource_type in ("xhr", "fetch") and self._n < 80:
+            if self.keep_dir is not None and re.search(r"modsearch|modresult|modmin|modhot|hotoffer", resp.url):
+                self._k = getattr(self, "_k", 0) + 1
+                path = re.sub(r"(session|referrer)=[^&]*&?", "", resp.url.split("//", 1)[-1])
+                name = re.sub(r"[^\w.=-]+", "_", path)[:110]
+                (self.keep_dir / ("key_%03d_%s.json" % (self._k, name))).write_text(body[:400_000], encoding="utf-8")
+            elif self.keep_dir is not None and req.resource_type in ("xhr", "fetch") and self._n < 80:
                 self._n += 1
                 name = re.sub(r"[^\w.-]+", "_", resp.url.split("//", 1)[-1])[:90]
                 (self.keep_dir / ("%03d_%s.txt" % (self._n, name))).write_text(body[:200_000], encoding="utf-8")
@@ -512,18 +517,22 @@ def run_recon(cfg):
             names = cfg["departures"] + sorted({d["country"] for d in cfg["destinations"].values()})
             report["ids_guess"] = find_ids([b for _, b in cap.bodies], htmls, names)
 
-            cid = cfg.get("country_ids", {}).get("ОАЭ", 9)
-            guess_dep = next((report["ids_guess"][n] for n in cfg["departures"] if n in report["ids_guess"]), 1)
-            page.goto(search_url(cfg, cid, guess_dep), wait_until="domcontentloaded", timeout=60_000)
-            n = wait_for_results(page, 90)
-            snap("03_search_uae", "карточек: %d" % n)
-            report["cards_sample"] = [c["text"][:300] for c in page.evaluate(JS_CARDS)[:5]]
-            ctx = {"dest": "dubai", "dep": "recon", "country": "ОАЭ", "kind": "tour", "cur": "RUB"}
-            report["json_offers_sample"] = [o for _, b in cap.bodies for o in extract_offers_from_json(b, ctx)][:5]
-
-            page.goto(search_url(cfg, cid, guess_dep, hot=True), wait_until="domcontentloaded", timeout=60_000)
-            n = wait_for_results(page, 60)
-            snap("04_hot_uae", "карточек: %d" % n)
+            ids = dict(cfg.get("country_ids") or {})
+            ids.update({k: v for k, v in report["ids_guess"].items() if k in ("ОАЭ", "Китай", "Грузия")})
+            deps = dict(cfg.get("departure_ids") or {})
+            deps.update({k: v for k, v in report["ids_guess"].items() if k in cfg["departures"]})
+            report["ids_used"] = {"countries": ids, "departures": deps}
+            plan = [("ОАЭ", "Актау"), ("ОАЭ", "Астана"), ("Грузия", "Астана"), ("Китай", "Алматы")]
+            for i, (cty, dep) in enumerate(plan, 1):
+                if cty in ids and dep in deps:
+                    page.goto(search_url(cfg, ids[cty], deps[dep]), wait_until="domcontentloaded", timeout=60_000)
+                    page.wait_for_timeout(70_000)
+                    snap("1%d_search_%s_%s" % (i, cty, dep), "прошло 70 с")
+            for i, (cty, dep) in enumerate([("ОАЭ", "Актау"), ("Грузия", "Астана")], 1):
+                if cty in ids and dep in deps:
+                    page.goto(search_url(cfg, ids[cty], deps[dep], hot=True), wait_until="domcontentloaded", timeout=60_000)
+                    page.wait_for_timeout(25_000)
+                    snap("2%d_hot_%s_%s" % (i, cty, dep))
         except Exception as e:  # noqa: BLE001
             report["error"] = str(e)[:400]
             snap("99_error")
