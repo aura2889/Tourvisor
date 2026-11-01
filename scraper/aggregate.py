@@ -110,6 +110,8 @@ def norm_offer(raw, cfg, today=None):
         price = pp[0] if pp else None
     if not hotel or not price or price <= 0:
         return None
+    if re.search(r"(?<![a-zа-я])test(?![a-zа-я])", hotel, re.I):   # на Турвизоре попадаются служебные «Test Hotel»
+        return None
     dest = raw.get("dest") or classify(raw.get("country"), raw.get("resort"), cfg)
     if dest not in cfg["destinations"]:
         return None
@@ -212,7 +214,7 @@ def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=Non
     # если по паре не удалось собрать данные — оставляем вчерашние, помечая как устаревшие
     carried = 0
     failed = {tuple(p) for p in failed_pairs}
-    if failed:
+    if failed and not prev.get("demo"):   # тестовые данные в «вчерашние» не переносим
         have = {(g["dest"], g["dep"]) for g in kept}
         for g in prev.get("offers", []):
             if (g["dest"], g["dep"]) in failed and (g["dest"], g["dep"]) not in have:

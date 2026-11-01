@@ -71,6 +71,14 @@ def test_group_dates():
     assert len({r["id"] for r in rows}) == 3
 
 
+def test_service_hotels_and_demo_carry():
+    assert agg.norm_offer(offer(hotel="Test 2 Hotel"), CFG, TODAY) is None
+    assert agg.norm_offer(offer(hotel="Latest Hotel"), CFG, TODAY)
+    prev = agg.build_data([offer(dep="Алматы")], CFG, today=TODAY, meta={"demo": True})
+    now = agg.build_data([offer()], CFG, prev=prev, failed_pairs=[("dubai", "Алматы")], today=TODAY)
+    assert now["stats"]["carried"] == 0        # демо-данные не переносятся
+
+
 def test_hot_separate_and_cap():
     raws = [offer(kind="hot", price=150000), offer(price=200000)]
     data = agg.build_data(raws, CFG, today=TODAY)

@@ -35,6 +35,10 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/130.0.0.0 Safari/537.36")
 
 
+class SearchRefused(Exception):
+    """Сайт не принял поиск (лимит, сессия, блокировка) — текст ответа попадёт в status.json."""
+
+
 class SetupNeeded(Exception):
     """Не удалось определить id городов вылета/стран — нужна разведка (--mode recon)."""
 
@@ -482,7 +486,7 @@ def hotel_link(ctx, hotel_id, iso_date, nights):
 
 
 def find_session(cap):
-    for _, url, *_ in cap.log:
+    for _, url, *_ in reversed(cap.log):
         m = re.search(r"[?&]session=([0-9a-f]{20,})", url)
         if m:
             return m.group(1)
@@ -502,7 +506,10 @@ def run_search(req, cfg, session, country_id, dep_id, d_from, d_to, regular):
         q["session"] = session
     headers = {"Referer": ref, "Accept": "application/json, text/javascript, */*"}
     r = req.get(site + MODSEARCH + "?" + urlencode(q), headers=headers, timeout=60_000)
-    rid = r.json()["result"]["requestid"]
+    try:
+        rid = r.json()["result"]["requestid"]
+    except (KeyError, TypeError, ValueError):
+        raise SearchRefused("modsearch %s: %s" % (r.status, r.text()[:220].replace("\n", " ")))
     datas, last = [], 0
     deadline = time.time() + cfg.get("max_search_seconds", 150)
     while time.time() < deadline:
@@ -565,7 +572,7 @@ def collect_hot(page, cap, cfg, dest_key, dep_name, dep_id, country_id):
             raw.update({"dest": dest_key, "dep": dep_name, "kind": "hot", "cur": raw.get("cur") or "RUB",
                         "url": card.get("href") or url})
             out.append(raw)
-    return out, {"cards": len(cards), "parsed": len(out), "sample": [c["text"][:260] for c in cards[:2]]}
+    return out, {"cards": len(cards), "parsed": len(out), "sample": [c["text"][:300] for c in cards[:14]]}
 
 
 def run_scrape(cfg):
@@ -597,16 +604,28 @@ def run_scrape(cfg):
                     got, errs, unfinished = [], 0, 0
                     for d_from, d_to in windows(cfg, today):
                         for regular in cfg.get("regular_modes", [1, 2]):
-                            try:
-                                datas, done = run_search(bctx.request, cfg, session, ctx["country_id"], ctx["dep_id"],
-                                                         d_from, d_to, regular)
-                                got += offers_from_modresult(datas, ctx)
-                                unfinished += 0 if done else 1
-                            except Exception as e:  # noqa: BLE001
-                                errs += 1
-                                if errs <= 2:
-                                    status["errors"].append("%s %s..%s: %s" % (label, d_from, d_to, str(e)[:160]))
-                            time.sleep(random.uniform(1.0, 2.5))
+                            for attempt in (1, 2, 3):
+                                try:
+                                    datas, done = run_search(bctx.request, cfg, session, ctx["country_id"], ctx["dep_id"],
+                                                             d_from, d_to, regular)
+                                    got += offers_from_modresult(datas, ctx)
+                                    unfinished += 0 if done else 1
+                                    break
+                                except Exception as e:  # noqa: BLE001
+                                    if attempt < 3:
+                                        # возможно, сессия устарела или сайт просит не частить: ждём и берём новую сессию
+                                        time.sleep(20 * attempt)
+                                        try:
+                                            page.goto(cfg["site"].rstrip("/") + "/search.php", wait_until="domcontentloaded", timeout=60_000)
+                                            page.wait_for_timeout(5000)
+                                            session = find_session(cap) or session
+                                        except Exception:  # noqa: BLE001
+                                            pass
+                                        continue
+                                    errs += 1
+                                    if len(status["errors"]) < 12:
+                                        status["errors"].append("%s %s..%s r%s: %s" % (label, d_from, d_to, regular, str(e)[:230]))
+                            time.sleep(random.uniform(3.0, 6.0))
                     status["pairs"][label] = {"offers": len(got), "errors": errs, "unfinished": unfinished}
                     raw += got
                     if errs and not got:
