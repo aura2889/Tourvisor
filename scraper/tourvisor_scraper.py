@@ -780,7 +780,7 @@ def run_recon_detail(cfg):
                     continue
                 php = sorted(set(re.findall(r"[\w/\-.]*\w+\.php", text)))
                 ctxs = []
-                for m in re.finditer(r".{0,300}(flightdata|FlightData|ExtraDetail|ModactDetail|flights?\\W|flightsdata|aviaresult|flightid).{0,500}", text):
+                for m in re.finditer(r".{0,300}(flightdata|FlightData|ExtraDetail|ModactDetail|flights?\W|flightsdata|aviaresult|flightid).{0,500}", text):
                     ctxs.append(m.group(0))
                     if len(ctxs) >= 30:
                         break
