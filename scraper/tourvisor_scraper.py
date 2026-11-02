@@ -637,12 +637,14 @@ def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=1500, re
     """Для самых дешёвых строк по каждой паре подтягиваем время вылета и рейс (как кнопка «i» на сайте)."""
     prev_fl = {o["id"]: o["fl"] for o in (prev or {}).get("offers", []) if o.get("fl")}
     t0, n_ok, n_err, taken, fails, n_ref = time.time(), 0, 0, {}, [], 0
+    got_ok = {}
     for o in data["offers"]:
         if o.get("stale"):
             continue
         pk = (o["dest"], o["dep"], o["kind"])
         taken[pk] = taken.get(pk, 0) + 1
-        if taken[pk] > per_pair or not o.get("tid") or time.time() - t0 > budget_s:
+        # если у туроператора ошибка и рейса нет — берём следующие строки, до двойного числа попыток
+        if got_ok.get(pk, 0) >= per_pair or taken[pk] > per_pair * 2 or not o.get("tid") or time.time() - t0 > budget_s:
             if o["id"] in prev_fl:
                 o["fl"] = prev_fl[o["id"]]
             continue
@@ -658,6 +660,7 @@ def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=1500, re
                 fl["date"] = o.get("tid_date")
                 o["fl"] = fl
                 n_ok += 1
+                got_ok[pk] = got_ok.get(pk, 0) + 1
             elif o["id"] in prev_fl:
                 o["fl"] = prev_fl[o["id"]]
         except Exception:  # noqa: BLE001
@@ -722,8 +725,9 @@ def run_scrape(cfg):
                             time.sleep(random.uniform(3.0, 6.0))
                     status["pairs"][label] = {"offers": len(got), "errors": errs, "unfinished": unfinished}
                     raw += got
-                    if errs and not got:
-                        failed.append((dest_key, dep))
+                    if not got:
+                        failed.append((dest_key, dep))   # пусто (ошибка или сайт ничего не отдал) — оставим вчерашние данные
+                        status["errors"].append("%s: пустой результат, оставлены данные прошлого сбора" % label)
                     # горящие
                     hl = "%s|%s|hot" % (dest_key, dep)
                     try:
