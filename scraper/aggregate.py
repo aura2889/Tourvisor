@@ -148,6 +148,7 @@ def norm_offer(raw, cfg, today=None):
         "hid": raw.get("hid"),
         "room": raw.get("room") or None,
         "rphoto": raw.get("rphoto") or None,
+        "tid": raw.get("tid") or None,
     }
 
 
@@ -166,6 +167,7 @@ def group_offers(offers):
             g = dict(o)
             g.pop("date")
             g["dates"] = set()
+            g["tid_date"] = o["date"]          # tid и его дата — от самой ранней даты (для деталей рейса)
             groups[k] = g
         g["dates"].add(o["date"])
         if not g.get("url") and o.get("url"):

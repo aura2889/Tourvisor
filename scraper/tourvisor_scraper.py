@@ -466,7 +466,7 @@ def offers_from_modresult(datas, ctx):
             "operator": (ops.get(t.get("op")) or {}).get("name"),
             "flight": "regular" if reg == 1 else "charter" if reg == 2 else None,
             "note": note,
-            "hid": hid, "room": room, "rphoto": rphoto,
+            "hid": hid, "room": room, "rphoto": rphoto, "tid": tid,
             "url": hotel_link(ctx, hid, t.get("dt"), t.get("nt")),
         })
     return out
@@ -594,13 +594,77 @@ def collect_hot(page, cap, cfg, dest_key, dep_name, dep_id, country_id):
     return out, {"cards": len(cards), "parsed": len(out), "sample": [c["text"][:300] for c in cards[:14]]}
 
 
+def _leg(x):
+    dep, arr = x.get("departure") or {}, x.get("arrival") or {}
+    return {"d": dep.get("date"), "t": dep.get("time"), "ad": arr.get("date"), "at": arr.get("time"),
+            "from": (dep.get("port") or {}).get("shortName") or (dep.get("port") or {}).get("name"),
+            "to": (arr.get("port") or {}).get("shortName") or (arr.get("port") or {}).get("name"),
+            "al": (x.get("company") or {}).get("name"), "n": x.get("number") or None,
+            "bag": x.get("baggage") or None, "carry": x.get("carryOn") or None}
+
+
+def parse_flights(resp):
+    """Ответ modact.php?detailed=1 -> компактные сведения о рейсе или None."""
+    try:
+        r = (resp.get("data") or {}).get("result") or {}
+        fs = (r.get("flights") or {}).get("defaultSet") or {}
+        fw, rv = fs.get("forward") or [], fs.get("reverse") or []
+    except AttributeError:
+        return None
+    if not fw and not rv:
+        return None
+    out = {"out": [_leg(x) for x in fw], "back": [_leg(x) for x in rv], "svc": r.get("contents") or []}
+    dur = fs.get("flightDurationForward")
+    if dur:
+        out["dur"] = int(dur)
+    return out
+
+
+def fetch_flights(req, cfg, session, tid):
+    site = cfg["site"].rstrip("/")
+    q = {"currency": 0, "detailed": 1, "tourid": tid, "referrer": site + "/search.php"}
+    if session:
+        q["session"] = session
+    r = req.get(site + "/xml/modact.php?" + urlencode(q), headers={"Referer": site + "/search.php"}, timeout=60_000)
+    return parse_flights(json.loads(r.text()))
+
+
+def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=900):
+    """Для самых дешёвых строк по каждой паре подтягиваем время вылета и рейс (как кнопка «i» на сайте)."""
+    prev_fl = {o["id"]: o["fl"] for o in (prev or {}).get("offers", []) if o.get("fl")}
+    t0, n_ok, n_err, taken = time.time(), 0, 0, {}
+    for o in data["offers"]:
+        if o.get("stale"):
+            continue
+        pk = (o["dest"], o["dep"], o["kind"])
+        taken[pk] = taken.get(pk, 0) + 1
+        if taken[pk] > per_pair or not o.get("tid") or time.time() - t0 > budget_s:
+            if o["id"] in prev_fl:
+                o["fl"] = prev_fl[o["id"]]
+            continue
+        try:
+            fl = fetch_flights(req, cfg, session, o["tid"])
+            if fl:
+                fl["date"] = o.get("tid_date")
+                o["fl"] = fl
+                n_ok += 1
+            elif o["id"] in prev_fl:
+                o["fl"] = prev_fl[o["id"]]
+        except Exception:  # noqa: BLE001
+            n_err += 1
+            if o["id"] in prev_fl:
+                o["fl"] = prev_fl[o["id"]]
+        time.sleep(random.uniform(0.8, 1.8))
+    return {"ok": n_ok, "errors": n_err}
+
+
 def run_scrape(cfg):
     from playwright.sync_api import sync_playwright
     prev = read_json(ROOT / "data.json")
     today = date.today()
     status = {"ok": False, "time": datetime.now(TZ).strftime("%Y-%m-%dT%H:%M:%S%z"), "mode": "scrape",
               "pairs": {}, "errors": []}
-    raw, failed, hotels_all = [], [], {}
+    raw, failed, hotels_all, data_pre = [], [], {}, None
     DEBUG.mkdir(exist_ok=True)
     with sync_playwright() as p:
         browser, bctx = new_browser(p)
@@ -659,6 +723,17 @@ def run_scrape(cfg):
                     except Exception as e:  # noqa: BLE001
                         status["errors"].append("%s: %s" % (hl, str(e)[:160]))
                     time.sleep(random.uniform(cfg["delay_min"], cfg["delay_max"]))
+            # данные собраны — собираем итоговый data.json, пока браузер открыт, и добавляем детали рейсов
+            if raw:
+                meta = {}
+                rate = fetch_rub_kzt() if cfg.get("rub_to_kzt") == "auto" else cfg.get("rub_to_kzt")
+                if isinstance(rate, (int, float)) and rate > 0:
+                    meta["rub_kzt"] = rate
+                data_pre = agg.build_data(raw, cfg, prev=prev, failed_pairs=failed, today=today, meta=meta, hotels=hotels_all)
+                try:
+                    status["flights"] = enrich_flights(data_pre, prev, bctx.request, cfg, session, cfg.get("flights_per_pair", 20))
+                except Exception as e:  # noqa: BLE001
+                    status["errors"].append("рейсы: %s" % str(e)[:160])
         except SetupNeeded as e:
             status["errors"].append(str(e))
             status["setup_needed"] = True
@@ -677,11 +752,8 @@ def run_scrape(cfg):
         print(json.dumps(status, ensure_ascii=False, indent=1))
         return 1
 
-    meta = {}
-    rate = fetch_rub_kzt() if cfg.get("rub_to_kzt") == "auto" else cfg.get("rub_to_kzt")
-    if isinstance(rate, (int, float)) and rate > 0:
-        meta["rub_kzt"] = rate
-    data = agg.build_data(raw, cfg, prev=prev, failed_pairs=failed, today=today, meta=meta, hotels=hotels_all)
+    data = data_pre if data_pre else agg.build_data(raw, cfg, prev=prev, failed_pairs=failed, today=today, hotels=hotels_all)
+    meta = {"rub_kzt": data.get("rub_kzt")}
     status["ok"] = not any(v.get("errors") for v in status["pairs"].values()) and not status["errors"]
     status["stats"] = data["stats"]
     write_json(ROOT / "data.json", data)

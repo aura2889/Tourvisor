@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Проверка разбора ответов сайта на выдуманных, но похожих примерах: python scraper/test_extract.py
 Настоящие образцы появятся после разведки (--mode recon); тогда сюда добавим их."""
+import json
 import sys
 from pathlib import Path
 
@@ -135,6 +136,17 @@ def test_windows_cover_period():
     assert ws[0][0] == date(2026, 11, 2) and ws[-1][1] == date(2026, 12, 31)
     assert all((b - a).days <= 20 for a, b in ws)
     assert all(ws[i + 1][0] > ws[i][1] for i in range(len(ws) - 1))
+
+
+def test_flights_from_modact():
+    resp = json.loads((Path(__file__).resolve().parent / "fixtures" / "modact_detailed.json").read_text(encoding="utf-8"))
+    fl = ts.parse_flights(resp)
+    assert fl["out"][0]["t"] == "04:10" and fl["out"][0]["at"] == "09:10", fl
+    assert fl["out"][0]["al"] == "Flydubai" and fl["out"][0]["n"] == "FZ1304" and fl["out"][0]["bag"] == 20
+    assert fl["back"][0]["t"] == "20:25" and fl["back"][0]["at"] == "03:10 +1"
+    assert fl["svc"] == ["Медицинская страховка", "Трансфер"]
+    assert ts.parse_flights({"data": {"result": {}}}) is None
+    assert ts.parse_flights({}) is None
 
 
 if __name__ == "__main__":

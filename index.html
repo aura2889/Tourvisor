@@ -71,6 +71,7 @@ main{padding:10px 12px 40px;max-width:820px;margin:0 auto}
 .lnk{display:inline-block;margin-top:8px;color:var(--acc);font-weight:600;font-size:13.5px;text-decoration:none}
 .more{display:block;width:100%;padding:11px;border:0;border-radius:12px;background:var(--chip);color:var(--ink);font:inherit;cursor:pointer}
 .empty{text-align:center;color:var(--mut);padding:30px 10px}
+.fl{font-size:12.5px;line-height:1.45;margin:4px 0 8px;padding:6px 8px;border-radius:8px;background:rgba(127,127,127,.1)}
 </style>
 </head>
 <body>
@@ -218,6 +219,24 @@ function linksFor(o){
   return out.join('');
 }
 
+function legTxt(l){
+  return (l.d?fmtDM(l.d)+' ':'')+esc(l.t||'')+' → '+esc(l.at||'')+' '+esc(l.from||'')+' → '+esc(l.to||'')+
+    (l.al?' · '+esc(l.al)+(l.n?' '+esc(l.n):''):'')+(l.bag?' · багаж '+l.bag+' кг':'');
+}
+function fmtDM(d){var m=/^(\d\d)\.(\d\d)/.exec(d||'');if(!m)return '';var N=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];return parseInt(m[1],10)+' '+N[parseInt(m[2],10)-1]}
+function flightShort(o){
+  var f=o.fl;if(!f||!f.out||!f.out.length)return '';
+  var a=f.out[0],z=f.out[f.out.length-1];
+  return '✈ '+esc(a.t||'')+' → '+esc(z.at||'')+(a.al?' · '+esc(a.al):'')+(f.out.length>1?' · '+(f.out.length-1)+' пересад.':' · прямой');
+}
+function flightFull(o){
+  var f=o.fl;if(!f||!f.out||!f.out.length)return '';
+  var h='<div class="fl"><b>✈ Рейсы'+(f.date&&o.dates.length>1?' (на '+esc(fmtDates([f.date]))+')':'')+'</b>';
+  f.out.forEach(function(l){h+='<div>→ '+legTxt(l)+'</div>'});
+  (f.back||[]).forEach(function(l){h+='<div>← '+legTxt(l)+'</div>'});
+  if(f.svc&&f.svc.length)h+='<div style="color:var(--mut)">В тур входит: '+esc(f.svc.join(', '))+'</div>';
+  return h+'</div>';
+}
 function groupHotels(rows){
   var map={},order=[];
   rows.forEach(function(o){
@@ -262,13 +281,14 @@ function renderList(){
       '<div class="t1">'+esc(o.hotel)+'<span class="st">'+new Array(o.stars+1).join('★')+'</span></div>'+
       '<div class="t2">'+line2(o)+'</div>'+
       '<div class="dates'+(S.date?' dsel':'')+'">'+(S.date?'📅 ':'')+esc(S.date?fmtDates([S.date]):fmtDates(o.dates))+'</div>'+
+      (flightShort(o)?'<div class="t2" style="color:var(--ink)">'+flightShort(o)+'</div>':'')+
       '<div class="tags">'+tagsFor(o)+'</div>'+
       '<div class="links">'+linksFor(o)+'</div></div>'+
       '<div class="r"><div class="pr">'+P(o.price,o.cur)+(rub(o.price,o.cur)?'<small>'+rub(o.price,o.cur)+'</small>':'')+'<small>за '+(DATA.adults||2)+' взр.'+(g.all.length>1?' · ещё '+(g.all.length-1)+' вар.':'')+'</small></div></div></div>'+
       '<div class="det">';
     g.all.forEach(function(v){
       h+='<div class="var"><span>'+(S.date?'📅 ':'')+esc(S.date?fmtDates([S.date]):fmtDates(v.dates))+(v.nights?' · '+v.nights+' ноч.':'')+(v.meal?' · '+esc(MEAL[v.meal]||v.meal):'')+
-        (v.operator?' · '+esc(v.operator):'')+(v.room?' · '+(v.rphoto?'<a target="_blank" rel="noopener" href="'+esc(v.rphoto)+'" style="color:var(--acc)">🛏 '+esc(v.room)+'</a>':esc(v.room)):'')+(v.note?'<br><span style="color:var(--mut);font-size:12px">'+esc(v.note)+'</span>':'')+'</span><b>'+P(v.price,v.cur)+(rub(v.price,v.cur)?'<br><span style="font-weight:500;color:var(--mut);font-size:12px">'+rub(v.price,v.cur)+'</span>':'')+'</b></div>';
+        (v.operator?' · '+esc(v.operator):'')+(v.room?' · '+(v.rphoto?'<a target="_blank" rel="noopener" href="'+esc(v.rphoto)+'" style="color:var(--acc)">🛏 '+esc(v.room)+'</a>':esc(v.room)):'')+(v.note?'<br><span style="color:var(--mut);font-size:12px">'+esc(v.note)+'</span>':'')+'</span><b>'+P(v.price,v.cur)+(rub(v.price,v.cur)?'<br><span style="font-weight:500;color:var(--mut);font-size:12px">'+rub(v.price,v.cur)+'</span>':'')+'</b></div>'+flightFull(v);
     });
     if(o.url)h+='<a class="lnk" target="_blank" rel="noopener" href="'+esc(o.url)+'">Открыть на Турвизоре →</a>';
     h+='</div></div>';
