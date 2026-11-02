@@ -1,5 +1,5 @@
 {
- "time": "2026-11-02T06:46:12.015309+05:00",
+ "time": "2026-11-02T07:04:23.405118+05:00",
  "calls": [
   {
    "url": "/xml/modact.php?tourid=99301515938681&flights=1&format=json",
@@ -82,5 +82,5 @@
    "size": 591
   }
  ],
- "tours_found": 367
+ "tours_found": 550
 }
