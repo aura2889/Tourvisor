@@ -780,9 +780,9 @@ def run_recon_detail(cfg):
                     continue
                 php = sorted(set(re.findall(r"[\w/\-.]*\w+\.php", text)))
                 ctxs = []
-                for m in re.finditer(r".{0,160}(actdetail|actualiz|flightdetail|flightinfo|hotelinfo|hotel\.php|imgbig|getflights|searchflights).{0,200}", text):
+                for m in re.finditer(r".{0,300}(modact|actdetail|flightdetail|flightinfo|getflights|tourid|TourId).{0,400}", text):
                     ctxs.append(m.group(0))
-                    if len(ctxs) >= 14:
+                    if len(ctxs) >= 40:
                         break
                 found[u.split("/")[-1].split("?")[0]] = {"php": php[:60], "ctx": ctxs}
             write_json(out / "js_endpoints.json", found, indent=1)
@@ -801,6 +801,9 @@ def run_recon_detail(cfg):
             for hid, t in tours[:2]:
                 tid = t["id"]
                 cands = [
+                    "/xml/modact.php?tourid=%s&flights=1&format=json" % tid,
+                    "/xml/modact.php?tourid=%s&request=2&flights=1&format=json" % tid,
+                    "/xml/modact.php?tourid=%s&flights=1&format=json&currency=0&formmode=0" % tid,
                     "/xml/actdetail.php?tourid=%s&flights=1&request=1&format=json" % tid,
                     "/xml/actdetail.php?tourid=%s&flights=1&format=json" % tid,
                     "/xml/actualize.php?tourid=%s&request=2&format=json" % tid,
