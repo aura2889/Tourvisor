@@ -773,6 +773,10 @@ def run_recon_detail(cfg):
             # 1) что умеют скрипты сайта: адреса *.php и места, где упоминаются рейсы/детали/фото
             js_urls = sorted({u for _, u, *_ in cap.log if "/module/" in u and u.split("?")[0].endswith(".js")})
             found = {}
+            if js_urls:
+                base = js_urls[0].rsplit("/", 1)[0]
+                for extra in ("flightsmng.min.js", "flights.min.js"):
+                    js_urls.append(base + "/" + extra)
             for u in js_urls:
                 try:
                     text = req.get(u, timeout=60_000).text()
@@ -780,9 +784,9 @@ def run_recon_detail(cfg):
                     continue
                 php = sorted(set(re.findall(r"[\w/\-.]*\w+\.php", text)))
                 ctxs = []
-                for m in re.finditer(r".{0,300}(flightdata|FlightData|ExtraDetail|ModactDetail|flights?\W|flightsdata|aviaresult|flightid).{0,500}", text):
+                for m in re.finditer(r".{0,300}(\.php|flightdata|FlightData|ExtraDetail|flightsdata|flightid|Url:).{0,500}", text):
                     ctxs.append(m.group(0))
-                    if len(ctxs) >= 30:
+                    if len(ctxs) >= (60 if "flights" in u else 8):
                         break
                 found[u.split("/")[-1].split("?")[0]] = {"php": php[:60], "ctx": ctxs}
             write_json(out / "js_endpoints.json", found, indent=1)
