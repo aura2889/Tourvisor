@@ -270,7 +270,12 @@ function line2(o){
 function renderList(){
   var rows=base();
   if(S.dep!=='*')rows=rows.filter(function(o){return o.dep===S.dep});
-  var gs=groupHotels(rows),n=Math.min(S.shown||60,gs.length),h='';
+  var gs=groupHotels(rows),h='';
+  // коротко: по 10 лучших отелей на каждую звёздность, в отеле — не больше 7 вариантов
+  var perStar={};
+  gs=gs.filter(function(g){var k=g.best.stars;perStar[k]=(perStar[k]||0)+1;return perStar[k]<=10});
+  gs.forEach(function(g){g.total=g.all.length;g.all=g.all.slice(0,7)});
+  var n=Math.min(S.shown||60,gs.length);
   if(!gs.length){
     $('list').innerHTML='<div class="empty">'+(S.kind==='hot'?'Горящих туров по этим фильтрам сейчас нет.':'Туров по этим фильтрам нет.')+
       '<br>Попробуйте другой город вылета, другую дату или добавьте звёзды.</div>';
@@ -285,7 +290,7 @@ function renderList(){
       (flightShort(o)?'<div class="t2" style="color:var(--ink)">'+flightShort(o)+'</div>':'')+
       '<div class="tags">'+tagsFor(o)+'</div>'+
       '<div class="links">'+linksFor(o)+'</div></div>'+
-      '<div class="r"><div class="pr">'+P(o.price,o.cur)+(rub(o.price,o.cur)?'<small>'+rub(o.price,o.cur)+'</small>':'')+'<small>за '+(DATA.adults||2)+' взр.'+(g.all.length>1?' · ещё '+(g.all.length-1)+' вар.':'')+'</small></div></div></div>'+
+      '<div class="r"><div class="pr">'+P(o.price,o.cur)+(rub(o.price,o.cur)?'<small>'+rub(o.price,o.cur)+'</small>':'')+'<small>за '+(DATA.adults||2)+' взр.'+(g.total>1?' · '+Math.min(g.total,7)+' вар.':'')+'</small></div></div></div>'+
       '<div class="det">';
     g.all.forEach(function(v){
       h+='<div class="var"><span>'+(S.date?'📅 ':'')+esc(S.date?fmtDates([S.date]):fmtDates(v.dates))+(v.nights?' · '+v.nights+' ноч.':'')+(v.meal?' · '+esc(MEAL[v.meal]||v.meal):'')+
