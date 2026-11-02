@@ -697,33 +697,48 @@ def run_scrape(cfg):
                            "country": dcfg["country"], "cur": "RUB", "adults": cfg["adults"],
                            "currency_param": cfg.get("currency_param", 0)}
                     label = "%s|%s|tour" % (dest_key, dep)
-                    got, errs, unfinished = [], 0, 0
-                    for d_from, d_to in windows(cfg, today):
-                        for regular in cfg.get("regular_modes", [1, 2]):
-                            for attempt in (1, 2, 3):
-                                try:
-                                    datas, done = run_search(bctx.request, cfg, session, ctx["country_id"], ctx["dep_id"],
-                                                             d_from, d_to, regular)
-                                    got += offers_from_modresult(datas, ctx)
-                                    hotels_all.update(hotels_from_modresult(datas))
-                                    unfinished += 0 if done else 1
-                                    break
-                                except Exception as e:  # noqa: BLE001
-                                    if attempt < 3:
-                                        # возможно, сессия устарела или сайт просит не частить: ждём и берём новую сессию
-                                        time.sleep(20 * attempt)
-                                        try:
-                                            page.goto(cfg["site"].rstrip("/") + "/search.php", wait_until="domcontentloaded", timeout=60_000)
-                                            page.wait_for_timeout(5000)
-                                            session = find_session(cap) or session
-                                        except Exception:  # noqa: BLE001
-                                            pass
-                                        continue
-                                    errs += 1
-                                    if len(status["errors"]) < 12:
-                                        status["errors"].append("%s %s..%s r%s: %s" % (label, d_from, d_to, regular, str(e)[:230]))
-                            time.sleep(random.uniform(3.0, 6.0))
-                    status["pairs"][label] = {"offers": len(got), "errors": errs, "unfinished": unfinished}
+                    got, errs, unfinished, per_win = [], 0, 0, []
+                    for pass_no in (1, 2):
+                        if pass_no == 2:
+                            # пусто — возможно, сайт временно ничего не отдал: ждём, берём новую сессию и повторяем пару
+                            time.sleep(60)
+                            try:
+                                page.goto(cfg["site"].rstrip("/") + "/search.php", wait_until="domcontentloaded", timeout=60_000)
+                                page.wait_for_timeout(5000)
+                                session = find_session(cap) or session
+                            except Exception:  # noqa: BLE001
+                                pass
+                            per_win.append("— повтор —")
+                        for d_from, d_to in windows(cfg, today):
+                            for regular in cfg.get("regular_modes", [1, 2]):
+                                for attempt in (1, 2, 3):
+                                    try:
+                                        datas, done = run_search(bctx.request, cfg, session, ctx["country_id"], ctx["dep_id"],
+                                                                 d_from, d_to, regular)
+                                        part = offers_from_modresult(datas, ctx)
+                                        got += part
+                                        per_win.append("%s r%s: %d" % (d_from.strftime("%d.%m"), regular, len(part)))
+                                        hotels_all.update(hotels_from_modresult(datas))
+                                        unfinished += 0 if done else 1
+                                        break
+                                    except Exception as e:  # noqa: BLE001
+                                        if attempt < 3:
+                                            # возможно, сессия устарела или сайт просит не частить: ждём и берём новую сессию
+                                            time.sleep(20 * attempt)
+                                            try:
+                                                page.goto(cfg["site"].rstrip("/") + "/search.php", wait_until="domcontentloaded", timeout=60_000)
+                                                page.wait_for_timeout(5000)
+                                                session = find_session(cap) or session
+                                            except Exception:  # noqa: BLE001
+                                                pass
+                                            continue
+                                        errs += 1
+                                        if len(status["errors"]) < 12:
+                                            status["errors"].append("%s %s..%s r%s: %s" % (label, d_from, d_to, regular, str(e)[:230]))
+                                time.sleep(random.uniform(3.0, 6.0))
+                        if got:
+                            break
+                    status["pairs"][label] = {"offers": len(got), "errors": errs, "unfinished": unfinished, "windows": per_win}
                     raw += got
                     if not got:
                         failed.append((dest_key, dep))   # пусто (ошибка или сайт ничего не отдал) — оставим вчерашние данные

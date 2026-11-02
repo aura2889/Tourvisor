@@ -200,7 +200,7 @@ def update_history(prev_history, mins, today_iso, keep_days=90):
     return hist
 
 
-def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=None, max_per_pair=400, hotels=None):
+def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=None, max_per_pair=400, hotels=None, per_date_min=8):
     """Главная функция: сырые предложения -> содержимое data.json."""
     today = today or date.today()
     prev = prev or {}
@@ -209,11 +209,18 @@ def build_data(raw_offers, cfg, prev=None, failed_pairs=(), meta=None, today=Non
     groups = group_offers(normed)
 
     # не больше max_per_pair самых дешёвых строк на пару (направление, город вылета, вид)
-    seen, kept = {}, []
+    # самые дешёвые строки пары + для каждой даты несколько самых дешёвых, чтобы выбор конкретной даты (в т.ч. дорогой) не был пустым
+    seen, per_date, kept = {}, {}, []
     for g in groups:
         pk = (g["dest"], g["dep"], g["kind"])
         seen[pk] = seen.get(pk, 0) + 1
-        if seen[pk] <= max_per_pair:
+        keep = seen[pk] <= max_per_pair
+        for d in g["dates"]:
+            n = per_date.get((pk, d), 0)
+            if n < per_date_min:
+                per_date[(pk, d)] = n + 1
+                keep = True
+        if keep:
             kept.append(g)
 
     # если по паре не удалось собрать данные — оставляем вчерашние, помечая как устаревшие

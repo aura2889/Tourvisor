@@ -85,8 +85,16 @@ def test_hot_separate_and_cap():
     assert {r["kind"] for r in data["offers"]} == {"hot", "tour"}
     assert "dubai|Астана|hot" in data["mins"] and "dubai|Астана|tour" in data["mins"]
     many = [offer(hotel="H%d" % i, price=100000 + i) for i in range(10)]
-    data = agg.build_data(many, CFG, today=TODAY, max_per_pair=4)
+    data = agg.build_data(many, CFG, today=TODAY, max_per_pair=4, per_date_min=0)
     assert len(data["offers"]) == 4 and data["offers"][0]["price"] == 100000
+
+
+def test_expensive_date_not_cut():
+    raws = [offer(hotel="H%d" % i, price=100000 + i, date="2026-12-01") for i in range(10)]
+    raws += [offer(hotel="Jan Hotel", price=900000, date="2027-01-05")]
+    data = agg.build_data(raws, CFG, today=TODAY, max_per_pair=3, per_date_min=2)
+    assert any("2027-01-05" in r["dates"] for r in data["offers"])     # дорогая январская дата осталась
+    assert len(data["offers"]) == 3 + 0 or len(data["offers"]) <= 4
 
 
 def test_carry_failed_pair_and_history():
