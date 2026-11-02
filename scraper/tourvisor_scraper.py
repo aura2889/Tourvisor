@@ -620,19 +620,23 @@ def parse_flights(resp):
     return out
 
 
-def fetch_flights(req, cfg, session, tid):
+def fetch_flights(req, cfg, session, tid, sink=None):
     site = cfg["site"].rstrip("/")
     q = {"currency": 0, "detailed": 1, "tourid": tid, "referrer": site + "/search.php"}
     if session:
         q["session"] = session
     r = req.get(site + "/xml/modact.php?" + urlencode(q), headers={"Referer": site + "/search.php"}, timeout=60_000)
-    return parse_flights(json.loads(r.text()))
+    body = r.text()
+    fl = parse_flights(json.loads(body))
+    if fl is None and sink is not None and len(sink) < 8:
+        sink.append({"tid": tid, "body": body[:700]})   # почему рейсов нет — смотрим в status.json
+    return fl
 
 
 def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=900):
     """Для самых дешёвых строк по каждой паре подтягиваем время вылета и рейс (как кнопка «i» на сайте)."""
     prev_fl = {o["id"]: o["fl"] for o in (prev or {}).get("offers", []) if o.get("fl")}
-    t0, n_ok, n_err, taken = time.time(), 0, 0, {}
+    t0, n_ok, n_err, taken, fails = time.time(), 0, 0, {}, []
     for o in data["offers"]:
         if o.get("stale"):
             continue
@@ -643,7 +647,7 @@ def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=900):
                 o["fl"] = prev_fl[o["id"]]
             continue
         try:
-            fl = fetch_flights(req, cfg, session, o["tid"])
+            fl = fetch_flights(req, cfg, session, o["tid"], fails)
             if fl:
                 fl["date"] = o.get("tid_date")
                 o["fl"] = fl
@@ -655,7 +659,7 @@ def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=900):
             if o["id"] in prev_fl:
                 o["fl"] = prev_fl[o["id"]]
         time.sleep(random.uniform(0.8, 1.8))
-    return {"ok": n_ok, "errors": n_err}
+    return {"ok": n_ok, "errors": n_err, "no_flights_samples": fails}
 
 
 def run_scrape(cfg):
@@ -905,6 +909,20 @@ def run_recon_detail(cfg):
                     write_json(out / ("key_detail_%02d_%s.json" % (n, name)),
                                {"url": c, "tour": t, "status": status, "body": body[:300_000]}, indent=1)
                     report["calls"].append({"url": c, "status": status, "size": len(body)})
+
+            # 2б) туры, у которых в данных рейса нет (Дубай/Китай из Актау): смотрим, что отвечает сайт
+            try:
+                cur = read_json(ROOT / "data.json")
+                picks = [o for o in cur.get("offers", []) if o.get("tid") and not o.get("fl") and o["dest"] in ("dubai", "china")
+                         and o["dep"] == "Актау"][:4]
+                for i, o in enumerate(picks, 1):
+                    r = req.get(site + "/xml/modact.php?" + urlencode(dict(q, currency=0, detailed=1, tourid=o["tid"])),
+                                headers={"Referer": ref}, timeout=60_000)
+                    write_json(out / ("key_detail_nofl_%d.json" % i),
+                               {"offer": {k: o.get(k) for k in ("dest", "dep", "hotel", "price", "dates", "tid", "operator", "flight")},
+                                "status": r.status, "body": r.text()[:60_000]}, indent=1)
+            except Exception as e:  # noqa: BLE001
+                report["nofl_error"] = str(e)[:200]
 
             # 3) как это делает сам сайт: открываем страницу тура по короткой ссылке и смотрим все запросы
             link = None
