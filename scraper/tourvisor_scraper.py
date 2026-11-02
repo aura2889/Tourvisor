@@ -780,9 +780,9 @@ def run_recon_detail(cfg):
                     continue
                 php = sorted(set(re.findall(r"[\w/\-.]*\w+\.php", text)))
                 ctxs = []
-                for m in re.finditer(r".{0,300}(modact|actdetail|flightdetail|flightinfo|getflights|tourid|TourId).{0,400}", text):
+                for m in re.finditer(r".{0,300}(flightdata|FlightData|ExtraDetail|ModactDetail|flights?\\W|flightsdata|aviaresult|flightid).{0,500}", text):
                     ctxs.append(m.group(0))
-                    if len(ctxs) >= 40:
+                    if len(ctxs) >= 30:
                         break
                 found[u.split("/")[-1].split("?")[0]] = {"php": php[:60], "ctx": ctxs}
             write_json(out / "js_endpoints.json", found, indent=1)
@@ -798,10 +798,16 @@ def run_recon_detail(cfg):
                 q["session"] = session
             tail = "&" + urlencode(q)
             n = 0
-            for hid, t in tours[:2]:
+            for hid, t in tours[:1]:
                 tid = t["id"]
                 cands = [
                     "/xml/modact.php?tourid=%s&flights=1&format=json" % tid,
+                    "/xml/modact.php?tourid=%s&flightdata=1&format=json" % tid,
+                    "/xml/modact.php?tourid=%s&detail=1&flights=1&format=json" % tid,
+                    "/xml/modact.php?tourid=%s&flights=1&extra=1&format=json" % tid,
+                    "/xml/modact.php?tourid=%s&flight=1&format=json" % tid,
+                    "/xml/modact.php?tourid=%s&request=1&flights=1&format=json" % tid,
+                    "/xml/modact.php?tourid=%s&format=json&type=flights" % tid,
                     "/xml/modact.php?tourid=%s&request=2&flights=1&format=json" % tid,
                     "/xml/modact.php?tourid=%s&flights=1&format=json&currency=0&formmode=0" % tid,
                     "/xml/actdetail.php?tourid=%s&flights=1&request=1&format=json" % tid,
