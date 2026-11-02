@@ -189,7 +189,7 @@ function renderNav(){
     '<button class="chip'+(S.kind==='hot'?' on':'')+'" data-kind="hot">🔥 Горящие</button>'+
     '<span class="lbl">&nbsp;Звёзды</span>'+[3,4,5].map(function(s){
       return '<button class="chip'+(S.stars.indexOf(s)>=0?' on':'')+'" data-star="'+s+'">'+s+'★</button>'}).join('')+
-    '<label class="chip dt'+(S.date?' on':'')+'">📅 <input type="date" id="dt" value="'+(S.date||'')+'" min="'+dateRange().min+'" max="'+dateRange().max+'"></label>'+
+    '<label class="chip dt'+(S.date?' on':'')+'">📅 <input type="date" id="dt" value="'+(S.date||'')+'" min="'+dateRange().min+'" max="'+maxDate()+'"></label>'+
     (S.date?'<button class="chip" data-nodate="1">Все даты</button>':'')+
     '<select id="sort"><option value="price"'+(S.sort==='price'?' selected':'')+'>Сначала дешёвые</option>'+
     '<option value="date"'+(S.sort==='date'?' selected':'')+'>Сначала ближайшие</option></select>';
@@ -203,6 +203,7 @@ function dateRange(){ /* самая ранняя и самая поздняя д
   DATA.offers.forEach(function(o){o.dates.forEach(function(d){if(d<mn)mn=d;if(d>mx)mx=d})});
   return DR={min:mn,max:mx};
 }
+function maxDate(){var d=new Date();d.setFullYear(d.getFullYear()+1);return d.toISOString().slice(0,10)}
 function mapUrl(h){return 'https://www.google.com/maps/search/?api=1&query='+h.lat+','+h.lng}
 function linksFor(o){
   var h=(DATA.hotels||{})[o.hid]||null,out=[];

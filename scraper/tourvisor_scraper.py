@@ -633,10 +633,10 @@ def fetch_flights(req, cfg, session, tid, sink=None):
     return fl
 
 
-def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=900):
+def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=1500, refresh=None):
     """Для самых дешёвых строк по каждой паре подтягиваем время вылета и рейс (как кнопка «i» на сайте)."""
     prev_fl = {o["id"]: o["fl"] for o in (prev or {}).get("offers", []) if o.get("fl")}
-    t0, n_ok, n_err, taken, fails = time.time(), 0, 0, {}, []
+    t0, n_ok, n_err, taken, fails, n_ref = time.time(), 0, 0, {}, [], 0
     for o in data["offers"]:
         if o.get("stale"):
             continue
@@ -648,6 +648,12 @@ def enrich_flights(data, prev, req, cfg, session, per_pair=20, budget_s=900):
             continue
         try:
             fl = fetch_flights(req, cfg, session, o["tid"], fails)
+            if not fl and refresh and n_ref < 12:
+                n_ref += 1
+                # возможно, сессия устарела за время долгого сбора: берём новую и пробуем ещё раз
+                session = refresh() or session
+                time.sleep(2)
+                fl = fetch_flights(req, cfg, session, o["tid"], fails)
             if fl:
                 fl["date"] = o.get("tid_date")
                 o["fl"] = fl
@@ -735,7 +741,15 @@ def run_scrape(cfg):
                     meta["rub_kzt"] = rate
                 data_pre = agg.build_data(raw, cfg, prev=prev, failed_pairs=failed, today=today, meta=meta, hotels=hotels_all)
                 try:
-                    status["flights"] = enrich_flights(data_pre, prev, bctx.request, cfg, session, cfg.get("flights_per_pair", 20))
+                    def refresh_session():
+                        try:
+                            page.goto(cfg["site"].rstrip("/") + "/search.php", wait_until="domcontentloaded", timeout=60_000)
+                            page.wait_for_timeout(5000)
+                            return find_session(cap)
+                        except Exception:  # noqa: BLE001
+                            return None
+                    status["flights"] = enrich_flights(data_pre, prev, bctx.request, cfg, session,
+                                                       cfg.get("flights_per_pair", 20), refresh=refresh_session)
                 except Exception as e:  # noqa: BLE001
                     status["errors"].append("рейсы: %s" % str(e)[:160])
         except SetupNeeded as e:

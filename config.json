@@ -4,7 +4,7 @@
   "min_stars": 3,
   "nights_from": 6,
   "nights_to": 14,
-  "days_ahead": 60,
+  "days_ahead": 100,
   "currency_param": 0,
   "delay_min": 3.0,
   "delay_max": 7.0,
