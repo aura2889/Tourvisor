@@ -1,0 +1,25 @@
+{
+ "url": "/api/v1.2/hotels/15744",
+ "tour": {
+  "op": 90,
+  "dt": "2026-12-02",
+  "nt": 6,
+  "ntf": 0,
+  "pl": 1,
+  "pr": 91689,
+  "prfuel": 0,
+  "prclean": 91689,
+  "id": "90301054933009",
+  "nm": 72936450,
+  "ml": 136,
+  "hp": 2,
+  "prue": 1115.87,
+  "reg": 2,
+  "ct": 29,
+  "rm": 850,
+  "rmd": 1336554,
+  "mf": 0
+ },
+ "status": 403,
+ "body": "<html>\r\n<title>403 Forbidden</title>\r\n<style>html{color-scheme:light dark;}</style>\r\n</head>\r\n<body>\r\n<center><h1>403 Forbidden</h1></center>\r\n<hr><center>Angie</center>\r\n</body>\r\n</html>\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n"
+}

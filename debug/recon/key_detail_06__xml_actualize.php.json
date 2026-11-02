@@ -1,0 +1,24 @@
+{
+ "url": "/xml/actualize.php?tourid=99301515938681&request=2&format=json",
+ "tour": {
+  "op": 191,
+  "dt": "2026-12-02",
+  "nt": 6,
+  "ntf": 0,
+  "pl": 1,
+  "pr": 91255,
+  "prfuel": 0,
+  "prclean": 91255,
+  "id": "99301515938681",
+  "nm": 72975912,
+  "ml": 3,
+  "prue": 1136,
+  "reg": 2,
+  "ct": 29,
+  "rm": 8,
+  "rmd": 726691,
+  "mf": 3
+ },
+ "status": 200,
+ "body": "{\"data\":{\"errormessage\":\"Authorisation Error.\",\"success\":0}}"
+}
