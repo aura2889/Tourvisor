@@ -833,6 +833,38 @@ def run_recon_detail(cfg):
                     write_json(out / ("key_detail_%02d_%s.json" % (n, name)),
                                {"url": c, "tour": t, "status": status, "body": body[:300_000]}, indent=1)
                     report["calls"].append({"url": c, "status": status, "size": len(body)})
+
+            # 3) как это делает сам сайт: открываем страницу тура по короткой ссылке и смотрим все запросы
+            link = None
+            for f in sorted(out.glob("key_detail_*modact*")):
+                try:
+                    link = json.loads(read_json(f)["body"])["data"]["tour"]["share"]["searchlink"]
+                    break
+                except Exception:  # noqa: BLE001
+                    continue
+            report["short_link"] = link
+            if link:
+                flow = []
+                def on_resp(r):
+                    try:
+                        u = r.url
+                        if any(x in u for x in (".png", ".jpg", ".svg", ".css", ".woff", ".gif", ".webp")):
+                            return
+                        b = r.text()
+                        flow.append({"url": u, "status": r.status, "len": len(b), "flight": bool(re.search("flight", b, re.I)),
+                                     "body": b[:200_000] if re.search(r"flight|forward|reverse|\d\d:\d\d", b) and len(b) < 400_000 else None})
+                    except Exception:  # noqa: BLE001
+                        pass
+                page.on("response", on_resp)
+                page.goto(link, wait_until="domcontentloaded", timeout=60_000)
+                page.wait_for_timeout(25_000)
+                try:
+                    page.screenshot(path=str(out / "key_detail_page.png"))
+                    (out / "key_detail_page.txt").write_text(page.inner_text("body")[:20_000], encoding="utf-8")
+                except Exception:  # noqa: BLE001
+                    pass
+                write_json(out / "key_detail_flow.json", flow, indent=1)
+                report["flow"] = [(x["url"][:150], x["len"], x["flight"]) for x in flow][:80]
         except Exception as e:  # noqa: BLE001
             report["error"] = str(e)[:400]
         finally:
