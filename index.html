@@ -146,11 +146,14 @@ function fmtTime(iso){
 }
 
 /* ---------- выборка ---------- */
+function areaOf(o){return S.kind==='hotels'?(o.sub||'Другие районы'):o.resort} // в режиме «Отели» делим по районам Дубая
 function base(){ // всё, кроме выбора города вылета
+  var kind=S.kind==='hotels'?'tour':S.kind;
   return DATA.offers.filter(function(o){
-    return o.dest===S.dest&&o.kind===S.kind&&S.stars.indexOf(o.stars)>=0&&(!S.resort||o.resort===S.resort)&&(!S.date||o.dates.indexOf(S.date)>=0);
+    return o.dest===S.dest&&o.kind===kind&&S.stars.indexOf(o.stars)>=0&&(!S.resort||areaOf(o)===S.resort)&&(!S.date||o.dates.indexOf(S.date)>=0);
   });
 }
+function ratingOf(o){var h=(DATA.hotels||{})[o.hid];var r=h&&parseFloat(h.rating);return r>0?r:0}
 function histDelta(dest,dep,kind){
   var h=(DATA.history||{})[dest+'|'+dep+'|'+kind];
   if(!h||h.length<2)return 0;
@@ -164,10 +167,11 @@ function renderNav(){
     return '<button class="chip big'+(S.dest===k?' on':'')+'" data-dest="'+k+'">'+esc(dests[k].title)+'</button>';
   }).join('');
 
-  var rs={};DATA.offers.forEach(function(o){if(o.dest===S.dest&&o.kind===S.kind&&o.resort)rs[o.resort]=(rs[o.resort]||0)+1});
+  var rs={},kindN=S.kind==='hotels'?'tour':S.kind;
+  DATA.offers.forEach(function(o){var a=areaOf(o);if(o.dest===S.dest&&o.kind===kindN&&a)rs[a]=(rs[a]||0)+1});
   var focus=focusOf(S.dest);
   var names=Object.keys(rs).sort(function(a,b){return (b===focus)-(a===focus)||rs[b]-rs[a]});
-  $('resort').innerHTML=names.length>1?('<span class="lbl">Курорт</span><button class="chip'+(!S.resort?' on':'')+'" data-resort="">Все</button>'+
+  $('resort').innerHTML=names.length>1?('<span class="lbl">'+(S.kind==='hotels'?'Район':'Курорт')+'</span><button class="chip'+(!S.resort?' on':'')+'" data-resort="">Все</button>'+
     names.map(function(n){return '<button class="chip'+(S.resort===n?' on':'')+'" data-resort="'+esc(n)+'">'+esc(n)+'</button>'}).join('')):'';
 
   var rows=base(),mins={};
@@ -187,12 +191,14 @@ function renderNav(){
 
   $('opts').innerHTML='<button class="chip'+(S.kind==='tour'?' on':'')+'" data-kind="tour">Туры</button>'+
     '<button class="chip'+(S.kind==='hot'?' on':'')+'" data-kind="hot">🔥 Горящие</button>'+
+    (S.dest==='dubai'?'<button class="chip'+(S.kind==='hotels'?' on':'')+'" data-kind="hotels">🏨 Отели</button>':'')+
     '<span class="lbl">&nbsp;Звёзды</span>'+[3,4,5].map(function(s){
       return '<button class="chip'+(S.stars.indexOf(s)>=0?' on':'')+'" data-star="'+s+'">'+s+'★</button>'}).join('')+
     '<label class="chip dt'+(S.date?' on':'')+'">📅 <input type="date" id="dt" value="'+(S.date||'')+'" min="'+dateRange().min+'" max="'+maxDate()+'"></label>'+
     (S.date?'<button class="chip" data-nodate="1">Все даты</button>':'')+
-    '<select id="sort"><option value="price"'+(S.sort==='price'?' selected':'')+'>Сначала дешёвые</option>'+
-    '<option value="date"'+(S.sort==='date'?' selected':'')+'>Сначала ближайшие</option></select>';
+    '<select id="sort">'+(S.kind==='hotels'?'<option value="value"'+(S.sort==='value'?' selected':'')+'>Сначала выгодные</option><option value="rating"'+(S.sort==='rating'?' selected':'')+'>По рейтингу</option>':'')+
+    '<option value="price"'+(S.sort==='price'?' selected':'')+'>Сначала дешёвые</option>'+
+    (S.kind==='hotels'?'':'<option value="date"'+(S.sort==='date'?' selected':'')+'>Сначала ближайшие</option>')+'</select>';
   $('sort').onchange=function(){S.sort=this.value;S.shown=60;save();renderList()};
   $('dt').onchange=function(){S.date=this.value||null;S.shown=60;save();renderAll()};
 }
@@ -239,18 +245,35 @@ function flightFull(o){
   return h+'</div>';
 }
 function groupHotels(rows){
-  var map={},order=[];
+  var map={},order=[],byHotel=S.kind==='hotels';
   rows.forEach(function(o){
-    var k=o.dep+'|'+o.hotel.toLowerCase();
+    var k=(byHotel?'':o.dep+'|')+o.hotel.toLowerCase();
     if(!map[k]){map[k]={best:o,all:[]};order.push(k)}
     map[k].all.push(o);
   });
   var gs=order.map(function(k){var g=map[k];g.all.sort(function(a,b){return a.price-b.price||a.dates[0].localeCompare(b.dates[0])});g.best=g.all[0];return g});
+  if(byHotel){ // «выгодность»: цена против средней по такой же звёздности (в текущем выборе) с учётом рейтинга
+    var by={};gs.forEach(function(g){(by[g.best.stars]=by[g.best.stars]||[]).push(g.best.price)});
+    var med={};Object.keys(by).forEach(function(k){var a=by[k].sort(function(x,y){return x-y});med[k]=a[Math.floor(a.length/2)]});
+    gs.forEach(function(g){var o=g.best,r=ratingOf(o);g.disc=1-o.price/med[o.stars];g.rating=r;g.value=(med[o.stars]/o.price)*(r?r/4.2:0.85)});
+    if(S.sort==='rating')gs.sort(function(a,b){return b.rating-a.rating||a.best.price-b.best.price});
+    else if(S.sort==='price')gs.sort(function(a,b){return a.best.price-b.best.price});
+    else gs.sort(function(a,b){return b.value-a.value});
+    return gs;
+  }
   if(S.sort==='date')gs.sort(function(a,b){return a.best.dates[0].localeCompare(b.best.dates[0])||a.best.price-b.best.price});
   else gs.sort(function(a,b){return a.best.price-b.best.price});
   return gs;
 }
 
+function hotelTags(g){
+  var t=[];
+  if(g.rating)t.push('<span class="tag" style="background:var(--good);color:#fff">★ '+g.rating.toFixed(1)+'</span>');
+  if(g.disc>=0.08)t.push('<span class="tag hot">−'+Math.round(g.disc*100)+'% к средней по '+g.best.stars+'★</span>');
+  var sd=((DATA.hotels||{})[g.best.hid]||{}).sea;
+  if(sd)t.push('<span class="tag">до моря '+sd+' м</span>');
+  return t.join('');
+}
 function tagsFor(o){
   var t=['<span class="tag dep">из '+esc(DEPFROM[o.dep]||o.dep)+'</span>'];
   if(o.kind==='hot')t.push('<span class="tag hot">🔥 горящий</span>');
@@ -277,7 +300,7 @@ function renderList(){
   gs.forEach(function(g){g.total=g.all.length;g.all=g.all.slice(0,7)});
   var n=Math.min(S.shown||60,gs.length);
   if(!gs.length){
-    $('list').innerHTML='<div class="empty">'+(S.kind==='hot'?'Горящих туров по этим фильтрам сейчас нет.':'Туров по этим фильтрам нет.')+
+    $('list').innerHTML='<div class="empty">'+(S.kind==='hotels'?'Отелей по этим фильтрам нет.':S.kind==='hot'?'Горящих туров по этим фильтрам сейчас нет.':'Туров по этим фильтрам нет.')+
       '<br>Попробуйте другой город вылета, другую дату или добавьте звёзды.</div>';
     return;
   }
@@ -288,12 +311,12 @@ function renderList(){
       '<div class="t2">'+line2(o)+'</div>'+
       '<div class="dates'+(S.date?' dsel':'')+'">'+(S.date?'📅 ':'')+esc(S.date?fmtDates([S.date]):fmtDates(o.dates))+'</div>'+
       (flightShort(o)?'<div class="t2" style="color:var(--ink)">'+flightShort(o)+'</div>':'')+
-      '<div class="tags">'+tagsFor(o)+'</div>'+
+      '<div class="tags">'+(S.kind==='hotels'?hotelTags(g):'')+tagsFor(o)+'</div>'+
       '<div class="links">'+linksFor(o)+'</div></div>'+
       '<div class="r"><div class="pr">'+P(o.price,o.cur)+(rub(o.price,o.cur)?'<small>'+rub(o.price,o.cur)+'</small>':'')+'<small>за '+(DATA.adults||2)+' взр.'+(g.total>1?' · '+Math.min(g.total,7)+' вар.':'')+'</small></div></div></div>'+
       '<div class="det">';
     g.all.forEach(function(v){
-      h+='<div class="var"><span>'+(S.date?'📅 ':'')+esc(S.date?fmtDates([S.date]):fmtDates(v.dates))+(v.nights?' · '+v.nights+' ноч.':'')+(v.meal?' · '+esc(MEAL[v.meal]||v.meal):'')+
+      h+='<div class="var"><span>'+(S.kind==='hotels'?'из '+esc(DEPFROM[v.dep]||v.dep)+' · ':'')+(S.date?'📅 ':'')+esc(S.date?fmtDates([S.date]):fmtDates(v.dates))+(v.nights?' · '+v.nights+' ноч.':'')+(v.meal?' · '+esc(MEAL[v.meal]||v.meal):'')+
         (v.operator?' · '+esc(v.operator):'')+(v.room?' · '+(v.rphoto?'<a target="_blank" rel="noopener" href="'+esc(v.rphoto)+'" style="color:var(--acc)">🛏 '+esc(v.room)+'</a>':esc(v.room)):'')+(v.note?'<br><span style="color:var(--mut);font-size:12px">'+esc(v.note)+'</span>':'')+'</span><b>'+P(v.price,v.cur)+(rub(v.price,v.cur)?'<br><span style="font-weight:500;color:var(--mut);font-size:12px">'+rub(v.price,v.cur)+'</span>':'')+'</b></div>'+flightFull(v);
     });
     if(o.url)h+='<a class="lnk" target="_blank" rel="noopener" href="'+esc(o.url)+'">Открыть на Турвизоре →</a>';
@@ -323,10 +346,12 @@ function renderAll(){renderNav();renderList()}
 document.addEventListener('click',function(e){
   var b=e.target.closest('[data-dest],[data-resort],[data-dep],[data-kind],[data-star],[data-nodate]');
   if(b){
-    if(b.hasAttribute('data-dest')){S.dest=b.getAttribute('data-dest');S.resort=focusOf(S.dest);S.dep='*'}
+    if(b.hasAttribute('data-dest')){S.dest=b.getAttribute('data-dest');S.resort=focusOf(S.dest);S.dep='*';
+      if(S.kind==='hotels'&&S.dest!=='dubai'){S.kind='tour';S.sort='price'}}
     else if(b.hasAttribute('data-resort')){S.resort=b.getAttribute('data-resort')||null}
     else if(b.hasAttribute('data-dep')){S.dep=b.getAttribute('data-dep')}
-    else if(b.hasAttribute('data-kind')){S.kind=b.getAttribute('data-kind')}
+    else if(b.hasAttribute('data-kind')){S.kind=b.getAttribute('data-kind');S.resort=null;
+      S.sort=S.kind==='hotels'?'value':(S.sort==='value'||S.sort==='rating'?'price':S.sort)}
     else if(b.hasAttribute('data-nodate')){S.date=null}
     else if(b.hasAttribute('data-star')){
       var s=+b.getAttribute('data-star'),i=S.stars.indexOf(s);
@@ -334,7 +359,7 @@ document.addEventListener('click',function(e){
     }
     S.shown=60;
     // если у выбранного курорта нет предложений в новом виде — сбрасываем на «все»
-    if(S.resort&&!DATA.offers.some(function(o){return o.dest===S.dest&&o.kind===S.kind&&o.resort===S.resort}))S.resort=null;
+    if(S.resort&&!DATA.offers.some(function(o){return o.dest===S.dest&&o.kind===(S.kind==='hotels'?'tour':S.kind)&&areaOf(o)===S.resort}))S.resort=null;
     save();renderAll();return;
   }
   var head=e.target.closest('.head');
